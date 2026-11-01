@@ -107,17 +107,24 @@ function callSession(): string {
 function disconnectMessage(reason: DisconnectReason | undefined): string | null {
     switch (reason) {
         case DisconnectReason.DUPLICATE_IDENTITY:
-            return 'This class was opened in another tab on this account. Only one session per tab stays connected.';
+            return 'This class was just opened somewhere else on this account. Rejoin here to take the seat back.';
         case DisconnectReason.PARTICIPANT_REMOVED:
             return 'You were removed from the call.';
         case DisconnectReason.ROOM_DELETED:
-            return 'The call was closed.';
+        case DisconnectReason.ROOM_CLOSED:
+            return 'The call was closed. Rejoin to start a new one.';
         case DisconnectReason.SERVER_SHUTDOWN:
             return 'The call server restarted. Rejoin to continue.';
-        case DisconnectReason.CLIENT_INITIATED:
-            return null;
         case DisconnectReason.SIGNAL_CLOSE:
             return 'The connection to the call server was lost. Rejoin to continue.';
+        case DisconnectReason.CONNECTION_TIMEOUT:
+        case DisconnectReason.MEDIA_FAILURE:
+            return 'The audio connection could not be established: the call server never received media from this device. UDP 7882 is blocked somewhere between this device and the server — test from the same machine first, or open UDP 7882 on the call server host.';
+        case DisconnectReason.JOIN_FAILURE:
+        case DisconnectReason.STATE_MISMATCH:
+            return 'The call server rejected this session. Reload the page and rejoin.';
+        case DisconnectReason.CLIENT_INITIATED:
+            return null;
         default:
             return null;
     }
