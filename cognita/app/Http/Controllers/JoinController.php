@@ -8,7 +8,6 @@ use App\Http\Requests\JoinClassroomRequest;
 use App\Models\User;
 use App\Services\ClassroomAccess;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 
 /**

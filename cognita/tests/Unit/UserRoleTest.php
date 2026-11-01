@@ -20,5 +20,4 @@ class UserRoleTest extends TestCase
         $this->assertSame('Instructor', UserRole::Instructor->label());
         $this->assertSame('Admin', UserRole::Admin->label());
     }
-
 }

@@ -230,6 +230,15 @@
         @apply bg-live-soft text-live;
     }
 
+    /* Badges that sit on the dark call stage rather than the light product surface. */
+    .stage-chip {
+        @apply inline-flex items-center gap-1.5 rounded-full bg-white/10 px-2.5 py-1 text-[11px] font-semibold text-white/80;
+    }
+
+    .stage-chip-live {
+        @apply bg-live/20 text-[#8ce8b0];
+    }
+
     .chip-warn {
         @apply bg-warn-soft text-warn;
     }

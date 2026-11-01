@@ -38,7 +38,7 @@ class InstructorConsoleTest extends TestCase
             ->patch("/instructor/courses/{$other->id}", ['title' => 'Hijacked'])
             ->assertForbidden();
 
-        $this->assertSame('Hijacked' === $other->fresh()->title, false);
+        $this->assertSame($other->fresh()->title === 'Hijacked', false);
     }
 
     public function test_creating_a_class_generates_a_key_and_a_board(): void

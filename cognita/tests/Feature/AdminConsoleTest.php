@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Enums\UserRole;
+use App\Models\Classroom;
+use App\Models\Course;
+use App\Models\Enrollment;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -51,9 +54,9 @@ class AdminConsoleTest extends TestCase
     {
         $admin = User::factory()->admin()->create();
         $student = User::factory()->student()->create();
-        $classroom = \App\Models\Classroom::factory()->create();
+        $classroom = Classroom::factory()->create();
 
-        \App\Models\Enrollment::query()->create([
+        Enrollment::query()->create([
             'classroom_id' => $classroom->getKey(),
             'student_id' => $student->getKey(),
             'joined_at' => now(),
@@ -67,8 +70,8 @@ class AdminConsoleTest extends TestCase
     public function test_the_inventory_pages_render(): void
     {
         $admin = User::factory()->admin()->create();
-        \App\Models\Course::factory()->create();
-        \App\Models\Classroom::factory()->create();
+        Course::factory()->create();
+        Classroom::factory()->create();
 
         $this->actingAs($admin)->get('/admin/courses')->assertOk();
         $this->actingAs($admin)->get('/admin/classrooms')->assertOk();

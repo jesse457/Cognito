@@ -510,7 +510,17 @@ export default function LiveCallRoom({
 
             roomRef.current = room;
 
-            room.on(RoomEvent.ParticipantConnected, refresh)
+            const resync = (): void => {
+                refresh();
+
+                // A late joiner boots from a server snapshot that may already be
+                // stale, so hand it the live board as soon as it connects.
+                if (canManageBoard) {
+                    broadcastState(boardRef.current);
+                }
+            };
+
+            room.on(RoomEvent.ParticipantConnected, resync)
                 .on(RoomEvent.ParticipantDisconnected, refresh)
                 .on(RoomEvent.ActiveSpeakersChanged, refresh)
                 .on(RoomEvent.ParticipantMetadataChanged, refresh)
@@ -680,8 +690,8 @@ export default function LiveCallRoom({
                     </button>
 
                     {connected ? (
-                        <span className="chip chip-live hidden sm:inline-flex">
-                            <span className="h-1.5 w-1.5 rounded-full bg-live" aria-hidden="true" />
+                        <span className="stage-chip stage-chip-live hidden sm:inline-flex">
+                            <span className="h-1.5 w-1.5 rounded-full bg-[#8ce8b0]" aria-hidden="true" />
                             Live
                         </span>
                     ) : null}
