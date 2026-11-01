@@ -18,3 +18,4 @@ cognita/database/*.sqlite
 .dev/composer-cache/
 .dev/composer-home/
 .dev/pgdebs/
+.dev/livekit-server-bin/

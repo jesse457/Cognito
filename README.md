@@ -101,40 +101,64 @@ The seed also creates one course (*Foundations of Applied Physics*) and one clas
 
 ---
 
-## When the call does not connect
+## Running LiveKit for calls
 
-Two things must both work: the **signal** connection (WebSocket on 7880, TCP) and the
-**media** connection (UDP 7882). A page that shows *Joining…* then *Reconnecting* is almost
-always the second one.
+Two connections must both work: the **signal** WebSocket on 7880 (TCP) and the **media**
+path on 7882 (UDP). A page that shows *Joining…* and then *Reconnecting* is almost always
+the second one.
 
-1. **Is the server reachable and the token valid?**
+### Local development: run LiveKit natively
+
+Docker Desktop publishes container ports through its own proxy. On this host the UDP leg
+silently drops WebRTC media — the browser joins the room, the server receives **zero** STUN
+packets, and ends the session with `CONNECTION_TIMEOUT`. A native process binds the WSL
+interface directly, which Windows reaches over TCP *and* UDP.
+
+```bash
+.dev/livekit.sh          # stops cognita-livekit, syncs LIVEKIT_URL, runs on 7880-7882
+```
+
+It sets `LIVEKIT_URL=ws://<wsl-address>:7880` in `cognita/.env` (the address changes when WSL
+restarts, so rerun the script after a reboot) and reuses `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`
+from the same file. The binary comes from the image, no download needed:
+
+```bash
+docker create --name lkx livekit/livekit-server:v1.13
+docker cp lkx:/livekit-server .dev/livekit-server-bin/livekit-server
+docker rm -f lkx && chmod +x .dev/livekit-server-bin/livekit-server
+```
+
+Open the app at `http://localhost:8000` — a secure context, so the microphone is allowed.
+
+### Docker
+
+`docker-compose.yml` still runs `livekit/livekit-server` with the same keys, which is fine for
+signalling tests, the board and everything except local media. Use it when the server sits on a
+real host or in front of a TURN/TLS deployment.
+
+### When media still fails
+
+1. **Server up and token valid?**
    ```bash
-   curl http://<livekit-host>:7880/            # → OK
+   curl http://<livekit-host>:7880/                    # → OK
    .dev/artisan tinker --execute '
    $u = App\Models\User::where("email","instructor@cognita.test")->first();
    $c = App\Models\Classroom::first();
    echo app(App\Services\LiveKit::class)->token($u, $c, "host")["token"];' > /tmp/t
    curl "http://<livekit-host>:7880/rtc/validate?access_token=$(cat /tmp/t)"   # → success
    ```
-
-2. **Is media reaching the server?** If `docker logs cognita-livekit` shows ICE pairs with
-   `"state":"failed"` and `"responsesReceived":0`, UDP is being dropped between the client and
-   the container. On Windows the host firewall must allow it:
+2. **Is media reaching the server?** ICE pairs with `"state":"failed"` and
+   `"requestsReceived":0` mean UDP is dropped in between. On Windows allow the ports:
    ```powershell
    netsh advfirewall firewall add rule name="LiveKit UDP 7882" dir=in action=allow protocol=UDP localport=7882
    netsh advfirewall firewall add rule name="LiveKit TCP 7881" dir=in action=allow protocol=TCP localport=7881
    ```
-
-3. **Test from the same machine first.** A browser on `http://localhost:8000` with
-   `LIVEKIT_URL=ws://localhost:7880` never leaves the box, so media works even when the LAN
-   path is blocked by a firewall or by carrier NAT.
-
-4. **Phones on mobile data** sit behind carrier-grade NAT and usually cannot receive the
-   server's inbound UDP at all. Use Wi-Fi, or put LiveKit on a public host with TURN.
-
-5. **One identity per browser tab.** Each tab gets its own LiveKit participant (suffixed from
-   `sessionStorage`), so two tabs, or two devices on the same account, no longer kick each
-   other. If a session is ended by the server, the call page says why and offers *Rejoin*.
+3. **Phones on mobile data** sit behind carrier-grade NAT and usually cannot receive the
+   server's inbound UDP. Use Wi-Fi, a public host with TURN, or LiveKit Cloud — the app only
+   needs `LIVEKIT_URL`, `LIVEKIT_API_KEY` and `LIVEKIT_API_SECRET`, so switching is config only.
+4. **One identity per browser tab.** Each tab gets its own LiveKit participant (suffixed from
+   `sessionStorage`), so two tabs or two devices on one account no longer kick each other. When
+   the server ends a session the call page says why and offers *Rejoin*.
 
 ## Using it
 

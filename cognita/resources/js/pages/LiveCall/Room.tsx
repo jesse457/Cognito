@@ -8,6 +8,7 @@ import {
     Microphone,
     MicrophoneSlash,
     PhoneDisconnect,
+    Spinner,
     SquaresFour,
     Users,
     X,
@@ -130,6 +131,26 @@ function disconnectMessage(reason: DisconnectReason | undefined): string | null 
     }
 }
 
+/** Which step of joining is running, so the lobby never looks frozen. */
+type JoinPhase = 'permission' | 'signal' | 'media';
+
+const joinPhaseLabel: Record<JoinPhase, string> = {
+    permission: 'Waiting for microphone permission…',
+    signal: 'Contacting the call server…',
+    media: 'Negotiating the audio connection…',
+};
+
+/** LiveKit reports an ICE failure as a bare "could not connect PC". */
+function joinErrorMessage(caught: unknown): string {
+    const raw = caught instanceof Error ? caught.message : String(caught);
+
+    if (/could not connect pc|failed to establish|pc connection|ice|timeout/i.test(raw)) {
+        return 'The call server answered, but the audio connection could not be established. The media port (UDP 7882) is not reachable between this device and the server — run .dev/livekit.sh on the server machine, or open UDP 7882.';
+    }
+
+    return raw === '' ? 'Could not join the call.' : raw;
+}
+
 function csrfToken(): string {
     return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
 }
@@ -195,6 +216,7 @@ export default function LiveCallRoom({
     const [status, setStatus] = useState<CallStatus>('idle');
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
+    const [phase, setPhase] = useState<JoinPhase | null>(null);
     const [audioBlocked, setAudioBlocked] = useState(false);
     const [participants, setParticipants] = useState<ParticipantView[]>([]);
     const [audioTracks, setAudioTracks] = useState<RemoteAudioTrack[]>([]);
@@ -543,6 +565,7 @@ export default function LiveCallRoom({
         setStatus('connecting');
         setError(null);
         setNotice(null);
+        setPhase('permission');
 
         if (!secureContext) {
             setNotice('Joined without a microphone: this address is not a secure origin, so the browser blocks it.');
@@ -554,6 +577,8 @@ export default function LiveCallRoom({
                 setNotice(`Joining muted. ${micErrorMessage(caught)}`);
             }
         }
+
+        setPhase('signal');
 
         try {
             const payload = await requestToken(tokenUrl, callSession());
@@ -585,7 +610,8 @@ export default function LiveCallRoom({
                 .on(RoomEvent.TrackUnsubscribed, refresh)
                 .on(RoomEvent.LocalTrackPublished, refresh)
                 .on(RoomEvent.LocalTrackUnpublished, refresh)
-                .on(RoomEvent.AudioPlaybackStatusChanged, refresh);
+                .on(RoomEvent.AudioPlaybackStatusChanged, refresh)
+                .on(RoomEvent.SignalConnected, () => setPhase('media'));
 
             room.on(RoomEvent.DataReceived, (payloadBytes, participant, _kind, topic) => {
                 if (topic !== BOARD_TOPIC) {
@@ -668,6 +694,7 @@ export default function LiveCallRoom({
             }
 
             setStatus('connected');
+            setPhase(null);
             refresh();
 
             void room.startAudio().then(
@@ -687,7 +714,8 @@ export default function LiveCallRoom({
             }
         } catch (caught) {
             setStatus('error');
-            setError(caught instanceof Error ? caught.message : 'Could not join the call.');
+            setPhase(null);
+            setError(joinErrorMessage(caught));
             await roomRef.current?.disconnect();
             roomRef.current = null;
         }
@@ -923,9 +951,16 @@ export default function LiveCallRoom({
                                         {joining ? 'Joining…' : status === 'disconnected' ? 'Rejoin call' : 'Join call'}
                                     </button>
 
-                                    <p className="mt-3 text-center text-[11px] text-white/40">
-                                        Your microphone stays off until you allow it.
-                                    </p>
+                                    {joining && phase !== null ? (
+                                        <p className="mt-3 flex items-center justify-center gap-2 text-[11px] text-white/55">
+                                            <Spinner size={13} className="motion-safe:animate-spin" aria-hidden="true" />
+                                            {joinPhaseLabel[phase]}
+                                        </p>
+                                    ) : (
+                                        <p className="mt-3 text-center text-[11px] text-white/40">
+                                            Your microphone stays off until you allow it.
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                         )}
