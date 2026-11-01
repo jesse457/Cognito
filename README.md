@@ -107,20 +107,45 @@ Two connections must both work: the **signal** WebSocket on 7880 (TCP) and the *
 path on 7882 (UDP). A page that shows *Joining…* and then *Reconnecting* is almost always
 the second one.
 
-### Local development: run LiveKit natively
+### Local development: native server behind a relay
 
-Docker Desktop publishes container ports through its own proxy. On this host the UDP leg
-silently drops WebRTC media — the browser joins the room, the server receives **zero** STUN
-packets, and ends the session with `CONNECTION_TIMEOUT`. A native process binds the WSL
-interface directly, which Windows reaches over TCP *and* UDP.
+Three facts shape this setup:
 
-```bash
-.dev/livekit.sh          # stops cognita-livekit, syncs LIVEKIT_URL, runs on 7880-7882
+- Docker Desktop's published-port proxy does not deliver WebRTC media to LiveKit's own UDP
+  socket — the browser joins, the server receives **zero** STUN packets, and the session ends
+  with `CONNECTION_TIMEOUT`.
+- WSL2 on Windows 10 NATs the distro behind the host. `netsh interface portproxy` forwards TCP
+  only, never UDP, and `networkingMode=mirrored` needs Windows 11.
+- A Docker-published port is proxied *inside* the distro, so it collides with anything native
+  listening on that port.
+
+So LiveKit runs natively in WSL (the binary comes out of the image, no download) and a small
+Node relay on Windows publishes the three ports and hands every packet to it:
+
+```
+phone / browser ──▶ 192.168.26.1:7880,7881 (TCP) ──▶ relay ──┐
+                └──▶ 192.168.26.1:7882 (UDP) ─────▶ relay ──┴──▶ 172.30.128.252 native LiveKit
 ```
 
-It sets `LIVEKIT_URL=ws://<wsl-address>:7880` in `cognita/.env` (the address changes when WSL
-restarts, so rerun the script after a reboot) and reuses `LIVEKIT_API_KEY` / `LIVEKIT_API_SECRET`
-from the same file. The binary comes from the image, no download needed:
+```bash
+.dev/livekit.sh            # phone + browser; writes LIVEKIT_URL into cognita/.env
+.dev/livekit.sh --direct   # no relay, this machine only
+```
+
+The script stops `cognita-livekit` (it would hold the ports), regenerates the LiveKit config with
+`node_ip` set to the host address from `APP_URL`, starts `relay.mjs` on Windows through
+`start-relay.ps1`, and runs the server in the foreground. After a reboot, WSL's address changes —
+rerun the script.
+
+Phones on the LAN need one firewall rule, because the stock *Node.js JavaScript Runtime* rules
+cover only the **Public** profile and a home Wi-Fi network is **Private**:
+
+```powershell
+# elevated PowerShell, once
+.\.dev\lan-forwarddd-firewall.ps1      # or run it from \wsl.localhost\<distro>\...
+```
+
+Getting the binary, if it is ever missing:
 
 ```bash
 docker create --name lkx livekit/livekit-server:v1.13
@@ -128,13 +153,20 @@ docker cp lkx:/livekit-server .dev/livekit-server-bin/livekit-server
 docker rm -f lkx && chmod +x .dev/livekit-server-bin/livekit-server
 ```
 
-Open the app at `http://localhost:8000` — a secure context, so the microphone is allowed.
+Verifying the relay without a phone (both must answer):
+
+```powershell
+(Invoke-WebRequest -UseBasicParsing http://192.168.26.1:7880/).StatusCode   # 200
+```
+
+Open the app at `http://localhost:8000` (secure context, microphone allowed) or, on a phone, at
+`http://<host-ip>:8000` — a plain HTTP address on the LAN is not a secure origin, so the phone
+joins muted and listens; the instructor still hears the room.
 
 ### Docker
 
-`docker-compose.yml` still runs `livekit/livekit-server` with the same keys, which is fine for
-signalling tests, the board and everything except local media. Use it when the server sits on a
-real host or in front of a TURN/TLS deployment.
+`docker-compose.yml` still runs `livekit/livekit-server` with the same keys. Use it when the
+server sits on a real host or behind TURN/TLS — not for media on this machine.
 
 ### When media still fails
 
