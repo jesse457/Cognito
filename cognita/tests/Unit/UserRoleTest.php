@@ -5,62 +5,20 @@ declare(strict_types=1);
 namespace Tests\Unit;
 
 use App\Enums\UserRole;
-use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 
 class UserRoleTest extends TestCase
 {
-    public function test_ranks_match_the_documented_hierarchy(): void
+    public function test_the_app_has_exactly_three_roles(): void
     {
-        $this->assertSame(0, UserRole::Student->rank());
-        $this->assertSame(1, UserRole::Instructor->rank());
-        $this->assertSame(2, UserRole::Moderator->rank());
-        $this->assertSame(3, UserRole::Admin->rank());
-        $this->assertSame(4, UserRole::Owner->rank());
+        $this->assertSame(['student', 'instructor', 'admin'], UserRole::assignable());
     }
 
-    public function test_at_least_is_inclusive_and_transitive(): void
+    public function test_labels_are_human_readable(): void
     {
-        $this->assertTrue(UserRole::Owner->atLeast(UserRole::Owner));
-        $this->assertTrue(UserRole::Admin->atLeast(UserRole::Moderator));
-        $this->assertTrue(UserRole::Moderator->atLeast(UserRole::Student));
-        $this->assertFalse(UserRole::Moderator->atLeast(UserRole::Admin));
-        $this->assertFalse(UserRole::Student->atLeast(UserRole::Instructor));
+        $this->assertSame('Student', UserRole::Student->label());
+        $this->assertSame('Instructor', UserRole::Instructor->label());
+        $this->assertSame('Admin', UserRole::Admin->label());
     }
 
-    public function test_staff_boundary_is_moderator_and_above(): void
-    {
-        $this->assertFalse(UserRole::Student->isStaff());
-        $this->assertFalse(UserRole::Instructor->isStaff());
-        $this->assertTrue(UserRole::Moderator->isStaff());
-        $this->assertTrue(UserRole::Admin->isStaff());
-        $this->assertTrue(UserRole::Owner->isStaff());
-    }
-
-    public function test_string_values_are_stable(): void
-    {
-        $this->assertSame('student', UserRole::Student->value);
-        $this->assertSame('instructor', UserRole::Instructor->value);
-        $this->assertSame('moderator', UserRole::Moderator->value);
-        $this->assertSame('admin', UserRole::Admin->value);
-        $this->assertSame('owner', UserRole::Owner->value);
-        $this->assertSame(['admin', 'moderator'], UserRole::invitableValues());
-    }
-
-    /** @return array<string, array{UserRole, UserRole, bool}> */
-    public static function comparisons(): array
-    {
-        return [
-            'owner over admin' => [UserRole::Owner, UserRole::Admin, true],
-            'admin over owner' => [UserRole::Admin, UserRole::Owner, false],
-            'moderator over student' => [UserRole::Moderator, UserRole::Student, true],
-            'instructor over moderator' => [UserRole::Instructor, UserRole::Moderator, false],
-        ];
-    }
-
-    #[DataProvider('comparisons')]
-    public function test_comparisons(UserRole $actor, UserRole $target, bool $expected): void
-    {
-        $this->assertSame($expected, $actor->atLeast($target));
-    }
 }

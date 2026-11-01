@@ -1,31 +1,43 @@
 import { usePage } from '@inertiajs/react';
+import { CheckCircle, WarningCircle, X } from '@phosphor-icons/react';
+import { useEffect, useState } from 'react';
 import type { SharedProps } from '@/types';
 
-/**
- * One-shot server flashes (session success/error). Inertia keeps them for a
- * single visit, so no client-side dismissal timer is needed.
- */
+/** One-shot flash messages, rendered above the page content and dismissible. */
 export default function Flash() {
     const { flash } = usePage<SharedProps>().props;
+    const [dismissed, setDismissed] = useState<string | null>(null);
 
-    if (!flash?.success && !flash?.error) {
+    const message = flash?.success ?? flash?.error ?? null;
+    const tone = flash?.success ? 'success' : flash?.error ? 'error' : null;
+
+    useEffect(() => {
+        setDismissed(null);
+    }, [message]);
+
+    if (message === null || tone === null || dismissed === message) {
         return null;
     }
 
     return (
-        <div className="flex flex-col gap-2">
-            {flash.success ? (
-                <div className="flash flash-success" role="status">
-                    <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-600" aria-hidden="true" />
-                    <p>{flash.success}</p>
-                </div>
-            ) : null}
-            {flash.error ? (
-                <div className="flash flash-error" role="alert">
-                    <span className="mt-0.5 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-red-600" aria-hidden="true" />
-                    <p>{flash.error}</p>
-                </div>
-            ) : null}
+        <div
+            className={tone === 'success' ? 'flash flash-success' : 'flash flash-error'}
+            role={tone === 'success' ? 'status' : 'alert'}
+        >
+            {tone === 'success' ? (
+                <CheckCircle size={18} weight="fill" className="mt-px shrink-0" aria-hidden="true" />
+            ) : (
+                <WarningCircle size={18} weight="fill" className="mt-px shrink-0" aria-hidden="true" />
+            )}
+            <p className="flex-1">{message}</p>
+            <button
+                type="button"
+                onClick={() => setDismissed(message)}
+                className="-mr-1 rounded-full p-1 opacity-60 transition hover:opacity-100"
+                aria-label="Dismiss message"
+            >
+                <X size={14} weight="bold" aria-hidden="true" />
+            </button>
         </div>
     );
 }

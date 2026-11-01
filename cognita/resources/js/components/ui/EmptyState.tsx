@@ -1,17 +1,19 @@
 import type { ReactNode } from 'react';
 
-interface EmptyStateProps {
+export default function EmptyState({
+    title,
+    body,
+    action,
+}: {
     title: string;
-    body?: string;
+    body: string;
     action?: ReactNode;
-}
-
-export default function EmptyState({ title, body, action }: EmptyStateProps) {
+}) {
     return (
         <div className="empty">
-            <p className="empty-title">{title}</p>
-            {body ? <p className="empty-body">{body}</p> : null}
-            {action ? <div className="mt-4 flex justify-center">{action}</div> : null}
+            <p className="text-sm font-semibold text-ink">{title}</p>
+            <p className="max-w-sm text-sm text-ink-muted">{body}</p>
+            {action ? <div className="mt-2">{action}</div> : null}
         </div>
     );
 }

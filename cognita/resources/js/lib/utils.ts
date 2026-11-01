@@ -5,60 +5,43 @@ export function cn(...inputs: ClassValue[]): string {
     return twMerge(clsx(inputs));
 }
 
-/** Human date for dense tables: 12 Mar 2026, 14:05. */
-export function formatDateTime(iso: string | null | undefined): string {
-    if (!iso) {
-        return '—';
+/** Copy text to the clipboard, falling back to a hidden textarea on old browsers. */
+export async function copyText(value: string): Promise<boolean> {
+    try {
+        await navigator.clipboard.writeText(value);
+
+        return true;
+    } catch {
+        try {
+            const area = document.createElement('textarea');
+            area.value = value;
+            area.setAttribute('readonly', '');
+            area.style.position = 'absolute';
+            area.style.left = '-9999px';
+            document.body.appendChild(area);
+            area.select();
+            const ok = document.execCommand('copy');
+            document.body.removeChild(area);
+
+            return ok;
+        } catch {
+            return false;
+        }
     }
-
-    const date = new Date(iso);
-
-    if (Number.isNaN(date.getTime())) {
-        return '—';
-    }
-
-    return date.toLocaleString(undefined, {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
 }
 
-/** Short date for roster-style cells. */
-export function formatDate(iso: string | null | undefined): string {
-    if (!iso) {
-        return '—';
-    }
-
-    const date = new Date(iso);
-
-    return Number.isNaN(date.getTime())
-        ? '—'
-        : date.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' });
+/** "3 members" / "1 member" without an awkward zero. */
+export function pluralize(count: number, singular: string, plural?: string): string {
+    return `${count} ${count === 1 ? singular : (plural ?? `${singular}s`)}`;
 }
 
-/** 0.7345 -> "73%" */
-export function percent(value: number | string | null | undefined): string {
-    const numeric = Number(value ?? 0);
-
-    return `${Math.round(Math.max(0, Math.min(1, numeric)) * 100)}%`;
-}
-
-/** Strip HTML entities Laravel ships inside pagination labels. */
-export function paginationLabel(label: string): string {
-    const text = label.replace(/&laquo;|&raquo;|&amp;/g, (entity) => {
-        return { '&laquo;': '«', '&raquo;': '»', '&amp;': '&' }[entity] ?? entity;
-    });
-
-    if (text.toLowerCase().includes('previous')) {
-        return 'Previous';
-    }
-
-    if (text.toLowerCase().includes('next')) {
-        return 'Next';
-    }
-
-    return text;
+export function initialsOf(name: string): string {
+    return (
+        name
+            .split(/\s+/)
+            .filter(Boolean)
+            .slice(0, 2)
+            .map((part) => part.charAt(0).toUpperCase())
+            .join('') || '?'
+    );
 }

@@ -1,10 +1,6 @@
 # Dependencies
 cognita/node_modules/
 cognita/vendor/
-kt-service/.venv/
-kt-service/.pipcache/
-kt-service/__pycache__/
-kt-service/.pytest_cache/
 
 # Runtime
 cognita/storage/
@@ -16,3 +12,9 @@ cognita/.env
 cognita/database/*.sqlite
 *.log
 .DS_Store
+
+# Local package caches (tool wrappers keep using them; they are not source)
+.dev/npm-cache/
+.dev/composer-cache/
+.dev/composer-home/
+.dev/pgdebs/

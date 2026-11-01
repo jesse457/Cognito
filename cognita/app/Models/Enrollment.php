@@ -9,6 +9,9 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
+/**
+ * A student's membership of one class. Created when the class key is accepted.
+ */
 class Enrollment extends Model
 {
     /** @use HasFactory<EnrollmentFactory> */
@@ -16,9 +19,9 @@ class Enrollment extends Model
 
     /** @var list<string> */
     protected $fillable = [
-        'user_id',
-        'course_id',
-        'enrolled_at',
+        'classroom_id',
+        'student_id',
+        'joined_at',
     ];
 
     /**
@@ -27,19 +30,19 @@ class Enrollment extends Model
     protected function casts(): array
     {
         return [
-            'enrolled_at' => 'datetime',
+            'joined_at' => 'datetime',
         ];
     }
 
-    /** @return BelongsTo<User, $this> */
-    public function user(): BelongsTo
+    /** @return BelongsTo<Classroom, $this> */
+    public function classroom(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(Classroom::class);
     }
 
-    /** @return BelongsTo<Course, $this> */
-    public function course(): BelongsTo
+    /** @return BelongsTo<User, $this> */
+    public function student(): BelongsTo
     {
-        return $this->belongsTo(Course::class);
+        return $this->belongsTo(User::class, 'student_id');
     }
 }

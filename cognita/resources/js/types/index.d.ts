@@ -1,16 +1,37 @@
+export type BoardSurface = 'canvas' | 'notebook' | 'pdf';
+
+export interface BoardDocument {
+    name: string;
+    url: string;
+    pages: number;
+}
+
+export interface BoardStroke {
+    id: number;
+    tool: 'pen' | 'marker' | 'eraser';
+    color: string;
+    width: number;
+    page: number;
+    points: Array<[number, number]>;
+}
+
+export interface BoardState {
+    surface: BoardSurface;
+    title: string;
+    document: BoardDocument | null;
+    page: number;
+    pages: number;
+    studentsCanAnnotate: boolean;
+    strokes: BoardStroke[];
+}
+
 export interface AuthUser {
     id: number;
     name: string;
-    display_name: string | null;
-    display_label: string;
-    initials: string;
     email: string;
-    role: string;
+    role: 'admin' | 'instructor' | 'student';
     role_label: string;
-    role_rank: number;
-    is_staff: boolean;
-    is_instructor: boolean;
-    status: string;
+    initials: string;
 }
 
 export interface FlashMessages {
@@ -18,19 +39,11 @@ export interface FlashMessages {
     error: string | null;
 }
 
-export interface Features {
-    instructorPath: boolean;
-    social: boolean;
-    liveCalls: boolean;
-    ktEngine: string;
-}
-
 export interface SharedProps {
     appName: string;
-    panel: 'admin' | 'instructor' | null;
     auth: { user: AuthUser | null };
-    features: Features;
     flash: FlashMessages;
+    errors: Record<string, string>;
     [key: string]: unknown;
 }
 
@@ -51,18 +64,24 @@ export interface Paginated<T> {
     links: PaginationLink[];
 }
 
-export interface PanelUser {
+export interface ClassroomSummary {
     id: number;
     name: string;
-    display_name: string | null;
-    display_label: string;
-    email: string | null;
-    role: string;
-    role_label: string;
-    status: string;
-    is_staff: boolean;
-    is_banned: boolean;
-    is_suspended: boolean;
-    created_at: string | null;
-    last_seen_at?: string | null;
+    join_code: string;
+    course: string | null;
+    instructor?: string | null;
+    members: number;
+    call_url: string;
+}
+
+export interface CourseSummary {
+    id: number;
+    title: string;
+    description: string | null;
+    classrooms_count: number;
+    created_at?: string | null;
+}
+
+declare module '@inertiajs/react' {
+    interface PageProps extends SharedProps {}
 }

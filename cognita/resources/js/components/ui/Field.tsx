@@ -1,47 +1,64 @@
-import type { ReactNode } from 'react';
+import { useId } from 'react';
+import type { InputHTMLAttributes, ReactNode, TextareaHTMLAttributes } from 'react';
 import { cn } from '@/lib/utils';
 
-interface FieldProps {
+const controlClass = 'input';
+
+/** One labelled control block: label above, control, then hint or error below. */
+export function Field({
+    label,
+    error,
+    hint,
+    children,
+    htmlFor,
+}: {
     label: string;
+    error?: string | null;
+    hint?: ReactNode;
+    children: (id: string) => ReactNode;
     htmlFor?: string;
-    hint?: string;
-    error?: string;
-    required?: boolean;
-    children: ReactNode;
-    className?: string;
-}
+}) {
+    const generated = useId();
+    const id = htmlFor ?? generated;
 
-export function Field({ label, htmlFor, hint, error, required, children, className }: FieldProps) {
     return (
-        <div className={cn('min-w-0', className)}>
-            <label htmlFor={htmlFor} className="label">
+        <div className="w-full">
+            <label className="label" htmlFor={id}>
                 {label}
-                {required ? <span className="text-red-600"> *</span> : null}
             </label>
-            {children}
-            {hint && !error ? <p className="hint">{hint}</p> : null}
-            {error ? <p className="error">{error}</p> : null}
+            {children(id)}
+            {error ? (
+                <p className="error" role="alert">
+                    {error}
+                </p>
+            ) : hint ? (
+                <p className="hint">{hint}</p>
+            ) : null}
         </div>
     );
 }
 
-interface PageHeaderProps {
-    title: string;
-    subtitle?: string;
-    actions?: ReactNode;
+type InputProps = InputHTMLAttributes<HTMLInputElement> & { invalid?: boolean };
+
+export function TextInput({ invalid, className, ...props }: InputProps) {
+    return <input {...props} className={cn(controlClass, invalid && 'border-danger focus:border-danger', className)} />;
 }
 
-export function PageHeader({ title, subtitle, actions }: PageHeaderProps) {
+type TextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> & { invalid?: boolean };
+
+export function TextArea({ invalid, className, ...props }: TextareaProps) {
     return (
-        <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-                <h1 className="page-title">{title}</h1>
-                {subtitle ? <p className="page-sub">{subtitle}</p> : null}
-            </div>
-            {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
-        </div>
+        <textarea
+            {...props}
+            className={cn(controlClass, 'min-h-24 resize-y', invalid && 'border-danger focus:border-danger', className)}
+        />
     );
 }
 
-export const inputClass = 'input';
-export const selectClass = 'select';
+export function Select({ invalid, className, children, ...props }: InputHTMLAttributes<HTMLSelectElement> & { invalid?: boolean }) {
+    return (
+        <select {...props} className={cn(controlClass, 'pr-9', invalid && 'border-danger', className)}>
+            {children}
+        </select>
+    );
+}

@@ -2,58 +2,89 @@
 
 declare(strict_types=1);
 
-use App\Http\Controllers\Auth\LoginController;
-use App\Http\Controllers\Auth\LogoutController;
+use App\Http\Controllers\AuthController;
+use App\Http\Controllers\BoardController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\JoinController;
 use App\Http\Controllers\LiveCallController;
-use App\Http\Controllers\Panel\HomeController;
+use App\Http\Controllers\WelcomeController;
 use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Console (Inertia) routes
+| Web routes
 |--------------------------------------------------------------------------
 |
-| The JSON API lives under /api and is untouched by the console. These routes
-| render Inertia pages that talk to the same services and policies.
+| Three surfaces, one router:
+|   /admin/*       administrators only
+|   /instructor/*  instructors only
+|   /my-classes    students only (their class key is the door)
 |
-|   admin panel      : always mounted (moderation is a baseline requirement)
-|   instructor portal: mounted only when features.instructor_path is true
+| The live call and its shared board are open to the instructor and to the
+| students of a class, so they live here rather than inside one surface.
 |
 */
 
-// --- Guest ------------------------------------------------------------------
+// --- Public -----------------------------------------------------------------
+Route::get('/', WelcomeController::class)->name('welcome');
+
+// The class-key door works before sign-in: the key is remembered and applied
+// once the student has an account.
+Route::post('join', [JoinController::class, 'store'])->middleware('throttle:20,1')->name('join.store');
+
 Route::middleware('guest')->group(function (): void {
-    Route::get('login', [LoginController::class, 'create'])->name('login');
-    Route::post('login', [LoginController::class, 'store'])->middleware('throttle:login');
+    Route::get('login', [AuthController::class, 'showLogin'])->name('login');
+    Route::post('login', [AuthController::class, 'login'])->middleware('throttle:10,1');
+    Route::get('register', [AuthController::class, 'showRegister'])->name('register');
+    Route::post('register', [AuthController::class, 'register'])->middleware('throttle:10,1');
 });
 
-// --- Authenticated entry ----------------------------------------------------
-Route::post('logout', LogoutController::class)->middleware('auth')->name('logout');
-Route::get('/', HomeController::class)->middleware(['auth', 'active'])->name('home');
+// --- Signed in --------------------------------------------------------------
+Route::middleware('auth')->group(function (): void {
+    Route::post('logout', [AuthController::class, 'logout'])->name('logout');
+    Route::get('dashboard', DashboardController::class)->name('dashboard');
 
-// --- Class group voice calls (LiveKit) --------------------------------------
-if (config('features.live_calls')) {
-    Route::middleware(['auth', 'active'])->group(function (): void {
-        Route::get('live-calls/{class}', [LiveCallController::class, 'show'])
-            ->whereNumber('class')
-            ->name('live-calls.show');
-        Route::post('live-calls/{class}/token', [LiveCallController::class, 'token'])
-            ->middleware('throttle:live-call-token')
-            ->whereNumber('class')
-            ->name('live-calls.token');
-    });
-}
+    // Live group call for a class (instructor host, enrolled students).
+    Route::get('classes/{classroom}/call', [LiveCallController::class, 'show'])
+        ->whereNumber('classroom')
+        ->name('call.show');
 
-// --- Admin panel (always mounted) -------------------------------------------
-Route::middleware(['auth', 'active', 'role.min:moderator', 'admin.context'])
+    Route::post('classes/{classroom}/call/token', [LiveCallController::class, 'token'])
+        ->whereNumber('classroom')
+        ->middleware('throttle:30,1')
+        ->name('call.token');
+
+    // Shared board: state, document upload and document streaming.
+    Route::patch('classes/{classroom}/board', [BoardController::class, 'update'])
+        ->whereNumber('classroom')
+        ->middleware('throttle:240,1')
+        ->name('board.update');
+
+    Route::post('classes/{classroom}/board/document', [BoardController::class, 'storeDocument'])
+        ->whereNumber('classroom')
+        ->name('board.document.store');
+
+    Route::delete('classes/{classroom}/board/document', [BoardController::class, 'destroyDocument'])
+        ->whereNumber('classroom')
+        ->name('board.document.destroy');
+
+    Route::get('classes/{classroom}/board/document', [BoardController::class, 'document'])
+        ->whereNumber('classroom')
+        ->name('board.document');
+});
+
+// --- Role surfaces ----------------------------------------------------------
+Route::middleware(['auth', 'role:student'])
+    ->prefix('my-classes')
+    ->name('student.')
+    ->group(base_path('routes/student.php'));
+
+Route::middleware(['auth', 'role:instructor'])
+    ->prefix('instructor')
+    ->name('instructor.')
+    ->group(base_path('routes/instructor.php'));
+
+Route::middleware(['auth', 'role:admin'])
     ->prefix('admin')
-    ->name('panel.admin.')
-    ->group(base_path('routes/web-admin.php'));
-
-// --- Instructor portal (only mounted when enabled) --------------------------
-if (config('features.instructor_path')) {
-    Route::middleware(['auth', 'active', 'role:instructor'])
-        ->prefix('instructor')
-        ->name('panel.instructor.')
-        ->group(base_path('routes/web-instructor.php'));
-}
+    ->name('admin.')
+    ->group(base_path('routes/admin.php'));

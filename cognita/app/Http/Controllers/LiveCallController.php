@@ -4,67 +4,82 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers;
 
+use App\Models\ClassBoard;
+use App\Models\Classroom;
 use App\Models\User;
-use App\Services\LiveCallService;
+use App\Services\ClassroomAccess;
+use App\Services\LiveKit;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * Browser entry point for a class group voice call.
+ * The live group call for a class.
  *
- * The page renders for the class instructor and active class members only.
- * The token endpoint mints a short-lived, voice-only LiveKit grant for the
- * same caller. The page requests the token after the Join button is pressed,
- * so the microphone prompt stays tied to a user gesture.
+ * The page is rendered for the class instructor and for students who joined
+ * with the class key. The token endpoint mints a short-lived, voice-scoped
+ * LiveKit grant for the same caller; the page requests it after the Join
+ * button is pressed so the microphone prompt stays tied to a user gesture.
  */
 class LiveCallController extends Controller
 {
-    public function __construct(private readonly LiveCallService $liveCalls) {}
+    public function __construct(
+        private readonly ClassroomAccess $access,
+        private readonly LiveKit $liveKit,
+    ) {}
 
-    public function show(Request $request, int $class): Response
+    public function show(Request $request, Classroom $classroom): Response
     {
         /** @var User $user */
         $user = $request->user();
 
-        ['class' => $model, 'role' => $role] = $this->liveCalls->authorize($user, $class);
+        ['role' => $role] = $this->access->assertCanJoinCall($user, $classroom);
+
+        $board = $classroom->board()->firstOrCreate([], [
+            'surface' => 'canvas',
+            'title' => 'Canvas',
+        ]);
 
         return Inertia::render('LiveCall/Room', [
-            'class' => [
-                'id' => (int) $model->getKey(),
-                'name' => $model->name,
-                'description' => $model->description,
-                'instructor' => $model->instructor?->displayLabel(),
-                'status' => $model->status->value,
+            'classroom' => [
+                'id' => (int) $classroom->getKey(),
+                'name' => $classroom->name,
+                'join_code' => $classroom->join_code,
+                'course' => $classroom->course?->title,
+                'instructor' => $classroom->instructor?->name,
             ],
             'role' => $role,
-            'room' => $this->liveCalls->roomFor($model),
-            'configured' => $this->liveCalls->configured(),
-            'tokenUrl' => route('live-calls.token', ['class' => $model->getKey()]),
-            'backUrl' => $this->backUrl($role, (int) $model->getKey()),
+            'board' => $board->state(),
+            'canEditBoard' => $role === ClassroomAccess::ROLE_HOST || $board->students_can_annotate,
+            'canManageBoard' => $role === ClassroomAccess::ROLE_HOST,
+            'room' => $classroom->roomName(),
+            'configured' => $this->liveKit->configured(),
+            'tokenUrl' => route('call.token', ['classroom' => $classroom->getKey()]),
+            'boardUrl' => route('board.update', ['classroom' => $classroom->getKey()]),
+            'boardPdfUrl' => route('board.document.store', ['classroom' => $classroom->getKey()]),
+            'backUrl' => $this->backUrl($role, $classroom),
         ]);
     }
 
-    public function token(Request $request, int $class): JsonResponse
+    public function token(Request $request, Classroom $classroom): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        ['class' => $model, 'role' => $role] = $this->liveCalls->authorize($user, $class);
+        ['role' => $role] = $this->access->assertCanJoinCall($user, $classroom);
 
         return response()->json([
-            'data' => $this->liveCalls->token($user, $model, $role),
+            'data' => $this->liveKit->token($user, $classroom, $role),
         ]);
     }
 
-    private function backUrl(string $role, int $classId): string
+    private function backUrl(string $role, Classroom $classroom): string
     {
-        if ($role === LiveCallService::ROLE_HOST && Route::has('panel.instructor.classes.show')) {
-            return route('panel.instructor.classes.show', ['class' => $classId]);
+        if ($role === ClassroomAccess::ROLE_HOST) {
+            return route('instructor.classes.show', ['classroom' => $classroom->getKey()]);
         }
 
-        return route('home');
+        return route('student.home');
     }
 }

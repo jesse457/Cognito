@@ -1,13 +1,14 @@
 # Cognita — infrastructure compose file (repo root)
 #
-# The Laravel application runs natively (`php artisan serve`); PostgreSQL (with
-# pgvector), the LiveKit group-call server, and the optional Python
-# Knowledge-Tracing microservice are containerized.
+# The Laravel application runs natively (`php artisan serve`). PostgreSQL and the
+# LiveKit group-call server are containerized.
 #
-# Deviation from spec: the host port for Postgres is 5433 (not 5432) because a
-# pre-existing container on this machine already binds 5432. Set DB_PORT=5433 in
-# the Laravel .env. Change `ports:` back to "5432:5432" and DB_PORT=5432 on a
-# machine where 5432 is free.
+# The Postgres host port is 5433 (not 5432) because a pre-existing container on
+# this machine already binds 5432. Set DB_PORT=5433 in cognita/.env; on another
+# machine, change `ports:` back to "5432:5432" and DB_PORT=5432.
+#
+# The image carries pgvector so a future embedding store needs no migration of
+# the container, even though the current schema does not use it.
 services:
   db:
     image: pgvector/pgvector:pg16
@@ -19,7 +20,8 @@ services:
     ports: ["5433:5432"]
     volumes:
       - cognita_db:/var/lib/postgresql/data
-      # Idempotent extension bootstrap; also verified manually in the README.
+      # Idempotent extension bootstrap, so `CREATE EXTENSION vector` works out of
+      # the box on a fresh volume.
       - ./docker/db/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d cognita"]
@@ -41,20 +43,6 @@ services:
     volumes:
       - ./docker/livekit/livekit.yaml:/etc/livekit.yaml:ro
     restart: unless-stopped
-
-  kt-service:
-    build:
-      context: ./kt-service
-      dockerfile: Dockerfile
-    container_name: cognita-kt
-    environment:
-      KT_ENGINE: ${KT_ENGINE:-bkt}
-      DKT_CHECKPOINT_PATH: /app/checkpoints/dkt.pt
-    ports: ["8001:8001"]
-    depends_on:
-      db:
-        condition: service_healthy
-    profiles: ["kt"] # `docker compose --profile kt up -d` (or run natively)
 
 volumes:
   cognita_db:

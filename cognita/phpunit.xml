@@ -23,12 +23,7 @@
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="BROADCAST_CONNECTION" value="null"/>
         <env name="CACHE_STORE" value="array"/>
-        <!--
-            Tests run against PostgreSQL, not SQLite: the RAG store uses
-            pgvector columns and HNSW indexes created with raw SQL, and the
-            acceptance criteria exercise those migrations.
-            `force="true"` overrides any stale shell environment.
-        -->
+        <!-- Tests run against the same Postgres 16 instance as the app. -->
         <env name="DB_CONNECTION" value="pgsql" force="true"/>
         <env name="DB_HOST" value="127.0.0.1" force="true"/>
         <env name="DB_PORT" value="5433" force="true"/>
@@ -39,19 +34,10 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
-        <env name="PULSE_ENABLED" value="false"/>
-        <env name="TELESCOPE_ENABLED" value="false"/>
-        <env name="NIGHTWATCH_ENABLED" value="false"/>
-        <!-- Feature flags default OFF; instructor suites boot with them ON. -->
-        <env name="FEATURE_INSTRUCTOR_PATH" value="false" force="true"/>
-        <env name="FEATURE_SOCIAL" value="false" force="true"/>
-        <env name="FEATURE_LIVE_CALLS" value="true" force="true"/>
+        <env name="FILESYSTEM_DISK" value="local"/>
         <env name="LIVEKIT_URL" value="ws://livekit.test" force="true"/>
         <env name="LIVEKIT_API_KEY" value="test-key" force="true"/>
         <env name="LIVEKIT_API_SECRET" value="test-secret" force="true"/>
-        <env name="KT_ENGINE" value="bkt" force="true"/>
-        <env name="KT_SERVICE_URL" value="http://kt-service.test" force="true"/>
-        <env name="MASTERY_AT_RISK_THRESHOLD" value="0.6" force="true"/>
-        <env name="INSTRUCTOR_MAX_CLASS_SIZE" value="50" force="true"/>
+        <env name="LIVEKIT_TOKEN_TTL" value="3600" force="true"/>
     </php>
 </phpunit>
