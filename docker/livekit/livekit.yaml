@@ -1,0 +1,23 @@
+# Cognita LiveKit server (local development)
+#
+# API keys are supplied through LIVEKIT_KEYS in docker-compose.yml so no secret
+# is committed here. For production, terminate TLS at a reverse proxy and use
+# the deployment guide: https://docs.livekit.io/transport/self-hosting/deployment/
+port: 7880
+
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  # For phone-over-LAN testing, advertise the Windows host's Wi-Fi IPv4
+  # address here (WSL's internal IP is not reachable from the phone):
+  node_ip: 192.168.26.1
+  enable_loopback_candidate: true
+
+room:
+  auto_create: true
+  empty_timeout: 300
+  departure_timeout: 20
+
+logging:
+  level: info

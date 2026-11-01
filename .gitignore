@@ -1,0 +1,18 @@
+# Dependencies
+cognita/node_modules/
+cognita/vendor/
+kt-service/.venv/
+kt-service/.pipcache/
+kt-service/__pycache__/
+kt-service/.pytest_cache/
+
+# Runtime
+cognita/storage/
+cognita/bootstrap/cache/*.php
+cognita/public/build/
+cognita/public/hot
+cognita/public/fonts-manifest.dev.json
+cognita/.env
+cognita/database/*.sqlite
+*.log
+.DS_Store

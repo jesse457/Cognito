@@ -1,0 +1,60 @@
+# Cognita — infrastructure compose file (repo root)
+#
+# The Laravel application runs natively (`php artisan serve`); PostgreSQL (with
+# pgvector), the LiveKit group-call server, and the optional Python
+# Knowledge-Tracing microservice are containerized.
+#
+# Deviation from spec: the host port for Postgres is 5433 (not 5432) because a
+# pre-existing container on this machine already binds 5432. Set DB_PORT=5433 in
+# the Laravel .env. Change `ports:` back to "5432:5432" and DB_PORT=5432 on a
+# machine where 5432 is free.
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: cognita-db
+    environment:
+      POSTGRES_DB: cognita
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: secret
+    ports: ["5433:5432"]
+    volumes:
+      - cognita_db:/var/lib/postgresql/data
+      # Idempotent extension bootstrap; also verified manually in the README.
+      - ./docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cognita"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  livekit:
+    image: livekit/livekit-server:v1.13
+    container_name: cognita-livekit
+    command: --config /etc/livekit.yaml
+    environment:
+      # Must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in cognita/.env.
+      LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-cognita-dev-livekit-secret-8f3c2a1b}"
+    ports:
+      - "7880:7880"       # signal + WebSocket
+      - "7881:7881"       # WebRTC over TCP fallback
+      - "7882:7882/udp"   # WebRTC media (single-port UDP mux)
+    volumes:
+      - ./docker/livekit/livekit.yaml:/etc/livekit.yaml:ro
+    restart: unless-stopped
+
+  kt-service:
+    build:
+      context: ./kt-service
+      dockerfile: Dockerfile
+    container_name: cognita-kt
+    environment:
+      KT_ENGINE: ${KT_ENGINE:-bkt}
+      DKT_CHECKPOINT_PATH: /app/checkpoints/dkt.pt
+    ports: ["8001:8001"]
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["kt"] # `docker compose --profile kt up -d` (or run natively)
+
+volumes:
+  cognita_db:
