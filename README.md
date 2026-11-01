@@ -101,6 +101,41 @@ The seed also creates one course (*Foundations of Applied Physics*) and one clas
 
 ---
 
+## When the call does not connect
+
+Two things must both work: the **signal** connection (WebSocket on 7880, TCP) and the
+**media** connection (UDP 7882). A page that shows *Joining…* then *Reconnecting* is almost
+always the second one.
+
+1. **Is the server reachable and the token valid?**
+   ```bash
+   curl http://<livekit-host>:7880/            # → OK
+   .dev/artisan tinker --execute '
+   $u = App\Models\User::where("email","instructor@cognita.test")->first();
+   $c = App\Models\Classroom::first();
+   echo app(App\Services\LiveKit::class)->token($u, $c, "host")["token"];' > /tmp/t
+   curl "http://<livekit-host>:7880/rtc/validate?access_token=$(cat /tmp/t)"   # → success
+   ```
+
+2. **Is media reaching the server?** If `docker logs cognita-livekit` shows ICE pairs with
+   `"state":"failed"` and `"responsesReceived":0`, UDP is being dropped between the client and
+   the container. On Windows the host firewall must allow it:
+   ```powershell
+   netsh advfirewall firewall add rule name="LiveKit UDP 7882" dir=in action=allow protocol=UDP localport=7882
+   netsh advfirewall firewall add rule name="LiveKit TCP 7881" dir=in action=allow protocol=TCP localport=7881
+   ```
+
+3. **Test from the same machine first.** A browser on `http://localhost:8000` with
+   `LIVEKIT_URL=ws://localhost:7880` never leaves the box, so media works even when the LAN
+   path is blocked by a firewall or by carrier NAT.
+
+4. **Phones on mobile data** sit behind carrier-grade NAT and usually cannot receive the
+   server's inbound UDP at all. Use Wi-Fi, or put LiveKit on a public host with TURN.
+
+5. **One identity per browser tab.** Each tab gets its own LiveKit participant (suffixed from
+   `sessionStorage`), so two tabs, or two devices on the same account, no longer kick each
+   other. If a session is ended by the server, the call page says why and offers *Rejoin*.
+
 ## Using it
 
 1. Sign in as the instructor, create a course, then a class inside it.

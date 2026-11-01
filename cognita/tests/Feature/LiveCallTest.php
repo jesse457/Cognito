@@ -89,6 +89,38 @@ class LiveCallTest extends TestCase
         $this->assertStringContainsString('"role":"host"', $claims['metadata']);
     }
 
+    public function test_each_browser_tab_gets_its_own_participant_identity(): void
+    {
+        $instructor = User::factory()->instructor()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+
+        $first = $this->actingAs($instructor)
+            ->postJson("/classes/{$classroom->id}/call/token", ['session' => 'tabaaa1'])
+            ->assertOk()
+            ->json('data.identity');
+
+        $second = $this->actingAs($instructor)
+            ->postJson("/classes/{$classroom->id}/call/token", ['session' => 'tabbbb2'])
+            ->assertOk()
+            ->json('data.identity');
+
+        // A shared identity makes LiveKit kick the older session, which shows up
+        // as a call that connects and then drops.
+        $this->assertNotSame($first, $second);
+        $this->assertStringStartsWith('user-'.$instructor->id, (string) $first);
+    }
+
+    public function test_a_malformed_session_is_ignored(): void
+    {
+        $instructor = User::factory()->instructor()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+
+        $this->actingAs($instructor)
+            ->postJson("/classes/{$classroom->id}/call/token", ['session' => '../../etc/passwd'])
+            ->assertOk()
+            ->assertJsonPath('data.identity', 'user-'.$instructor->id);
+    }
+
     public function test_non_members_get_no_token(): void
     {
         $outsider = User::factory()->student()->create();

@@ -39,7 +39,11 @@ services:
     ports:
       - "7880:7880"       # signal + WebSocket
       - "7881:7881"       # WebRTC over TCP fallback
-      - "7882:7882/udp"   # WebRTC media (single-port UDP mux)
+      # WebRTC media (single-port UDP mux). This one must reach every client
+      # unproxied: on Windows the host firewall has to allow inbound UDP 7882,
+      # and a phone on mobile data behind carrier NAT often cannot receive it
+      # at all — test voice from the LAN or from the same machine.
+      - "7882:7882/udp"
     volumes:
       - ./docker/livekit/livekit.yaml:/etc/livekit.yaml:ro
     restart: unless-stopped

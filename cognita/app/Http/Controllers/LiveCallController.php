@@ -68,8 +68,11 @@ class LiveCallController extends Controller
 
         ['role' => $role] = $this->access->assertCanJoinCall($user, $classroom);
 
+        $session = $request->string('session')->toString();
+        $session = preg_match(LiveKit::SESSION_PATTERN, $session) === 1 ? $session : null;
+
         return response()->json([
-            'data' => $this->liveKit->token($user, $classroom, $role),
+            'data' => $this->liveKit->token($user, $classroom, $role, $session),
         ]);
     }
 

@@ -239,6 +239,10 @@
         @apply bg-live/20 text-[#8ce8b0];
     }
 
+    .stage-chip-warn {
+        @apply bg-warn/20 text-[#ffd28a];
+    }
+
     .chip-warn {
         @apply bg-warn-soft text-warn;
     }

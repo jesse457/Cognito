@@ -15,6 +15,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
     ConnectionState,
+    DisconnectReason,
     Room as LiveKitRoom,
     RoomEvent,
     Track,
@@ -28,7 +29,7 @@ import ParticipantTile from '@/components/call/ParticipantTile';
 import { cn, copyText, pluralize } from '@/lib/utils';
 import type { BoardState, BoardStroke, BoardSurface } from '@/types';
 
-type CallStatus = 'idle' | 'connecting' | 'connected' | 'disconnected' | 'error';
+type CallStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
 
 interface RoomPageProps {
     classroom: {
@@ -79,6 +80,48 @@ type BoardMessage =
     | { type: 'clear'; page: number };
 
 const BOARD_TOPIC = 'cognita.board';
+
+/** Keeps one stable participant identity per browser tab across reloads. */
+const SESSION_KEY = 'cognita.call.session';
+
+function callSession(): string {
+    const create = (): string => Math.random().toString(36).slice(2, 11).padEnd(6, '0');
+
+    try {
+        const stored = window.sessionStorage.getItem(SESSION_KEY);
+
+        if (stored !== null && /^[a-z0-9]{6,16}$/.test(stored)) {
+            return stored;
+        }
+
+        const created = create();
+        window.sessionStorage.setItem(SESSION_KEY, created);
+
+        return created;
+    } catch {
+        return create();
+    }
+}
+
+/** Why the server ended the session, in classroom language. */
+function disconnectMessage(reason: DisconnectReason | undefined): string | null {
+    switch (reason) {
+        case DisconnectReason.DUPLICATE_IDENTITY:
+            return 'This class was opened in another tab on this account. Only one session per tab stays connected.';
+        case DisconnectReason.PARTICIPANT_REMOVED:
+            return 'You were removed from the call.';
+        case DisconnectReason.ROOM_DELETED:
+            return 'The call was closed.';
+        case DisconnectReason.SERVER_SHUTDOWN:
+            return 'The call server restarted. Rejoin to continue.';
+        case DisconnectReason.CLIENT_INITIATED:
+            return null;
+        case DisconnectReason.SIGNAL_CLOSE:
+            return 'The connection to the call server was lost. Rejoin to continue.';
+        default:
+            return null;
+    }
+}
 
 function csrfToken(): string {
     return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
@@ -163,6 +206,11 @@ export default function LiveCallRoom({
     const secureContext = typeof window !== 'undefined' ? window.isSecureContext : false;
 
     const connected = status === 'connected';
+    const reconnecting = status === 'reconnecting';
+
+    // The stage stays mounted through a reconnect so a blip does not throw the
+    // room away; only a real disconnect returns to the lobby.
+    const inCall = connected || reconnecting;
     const joining = status === 'connecting';
 
     const commitBoard = useCallback((next: BoardState) => {
@@ -481,7 +529,7 @@ export default function LiveCallRoom({
     }, []);
 
     async function joinCall(): Promise<void> {
-        if (joining || connected) {
+        if (joining || inCall) {
             return;
         }
 
@@ -501,7 +549,7 @@ export default function LiveCallRoom({
         }
 
         try {
-            const payload = await requestToken(tokenUrl);
+            const payload = await requestToken(tokenUrl, callSession());
             const room = new LiveKitRoom({
                 adaptiveStream: true,
                 dynacast: true,
@@ -550,12 +598,20 @@ export default function LiveCallRoom({
                 if (state === ConnectionState.Connected) {
                     setStatus('connected');
                 }
+
+                if (state === ConnectionState.Reconnecting) {
+                    setStatus('reconnecting');
+                }
             });
 
-            room.on(RoomEvent.Reconnecting, () => setNotice('Connection dropped. Reconnecting…'));
+            room.on(RoomEvent.Reconnecting, () => {
+                setStatus('reconnecting');
+                setNotice('Connection dropped. Reconnecting…');
+            });
+
             room.on(RoomEvent.Reconnected, () => {
-                setNotice(null);
                 setStatus('connected');
+                setNotice(null);
                 refresh();
 
                 if (canManageBoard) {
@@ -563,15 +619,47 @@ export default function LiveCallRoom({
                 }
             });
 
-            room.on(RoomEvent.Disconnected, () => {
+            room.on(RoomEvent.MediaDevicesError, (caught: Error) => setNotice(micErrorMessage(caught)));
+
+            room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
                 setStatus('disconnected');
                 setParticipants([]);
                 setAudioTracks([]);
                 setMicEnabled(false);
                 setAudioBlocked(false);
+
+                const message = disconnectMessage(reason);
+
+                if (message !== null) {
+                    setError(message);
+                }
             });
 
-            await room.connect(payload.url, payload.token, { autoSubscribe: true });
+            // A wedged WebSocket or a blocked media port leaves connect()
+            // pending forever; fail loudly instead of sitting in "Joining…".
+            let watchdog: number | undefined;
+
+            try {
+                await Promise.race([
+                    room.connect(payload.url, payload.token, { autoSubscribe: true }),
+                    new Promise<never>((_, reject) => {
+                        watchdog = window.setTimeout(
+                            () =>
+                                reject(
+                                    new Error(
+                                        'The call server did not answer within 25 seconds. Check that the LiveKit URL is reachable from this device and that UDP 7882 is open.',
+                                    ),
+                                ),
+                            25_000,
+                        );
+                    }),
+                ]);
+            } finally {
+                if (watchdog !== undefined) {
+                    window.clearTimeout(watchdog);
+                }
+            }
+
             setStatus('connected');
             refresh();
 
@@ -689,10 +777,13 @@ export default function LiveCallRoom({
                         {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
                     </button>
 
-                    {connected ? (
-                        <span className="stage-chip stage-chip-live hidden sm:inline-flex">
-                            <span className="h-1.5 w-1.5 rounded-full bg-[#8ce8b0]" aria-hidden="true" />
-                            Live
+                    {inCall ? (
+                        <span className={cn('stage-chip hidden sm:inline-flex', reconnecting ? 'stage-chip-warn' : 'stage-chip-live')}>
+                            <span
+                                className={cn('h-1.5 w-1.5 rounded-full', reconnecting ? 'bg-[#ffd28a]' : 'bg-[#8ce8b0]')}
+                                aria-hidden="true"
+                            />
+                            {reconnecting ? 'Reconnecting' : 'Live'}
                         </span>
                     ) : null}
 
@@ -726,7 +817,7 @@ export default function LiveCallRoom({
                             </div>
                         ) : null}
 
-                        {connected ? (
+                        {inCall ? (
                             <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-3 sm:p-4">
                                 {boardOpen ? (
                                     <div className="flex min-h-0 flex-1 flex-col gap-2.5 lg:flex-row">
@@ -832,7 +923,7 @@ export default function LiveCallRoom({
                             </div>
                         )}
 
-                        {connected ? (
+                        {inCall ? (
                             <div className="shrink-0 px-3 pb-4 sm:px-4">
                                 {audioBlocked && audioTracks.length > 0 ? (
                                     <div className="mb-2 flex justify-center">
@@ -994,7 +1085,7 @@ function RemoteAudio({ track }: { track: RemoteAudioTrack }) {
     return <audio ref={ref} autoPlay playsInline className="hidden" />;
 }
 
-async function requestToken(url: string): Promise<TokenPayload> {
+async function requestToken(url: string, session: string): Promise<TokenPayload> {
     const response = await fetch(url, {
         method: 'POST',
         credentials: 'same-origin',
@@ -1003,7 +1094,7 @@ async function requestToken(url: string): Promise<TokenPayload> {
             'Content-Type': 'application/json',
             'X-CSRF-TOKEN': csrfToken(),
         },
-        body: JSON.stringify({}),
+        body: JSON.stringify({ session }),
     });
 
     if (!response.ok) {
