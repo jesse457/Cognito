@@ -13,6 +13,9 @@ cognita/database/*.sqlite
 *.log
 .DS_Store
 
+# Local dev workspace (tooling, logs, caches; never source)
+.dev/
+
 # Local package caches (tool wrappers keep using them; they are not source)
 .dev/npm-cache/
 .dev/composer-cache/
