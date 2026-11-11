@@ -50,7 +50,7 @@ export default function Modal({
                 role="dialog"
                 aria-modal="true"
                 aria-label={title}
-                className="relative z-10 w-full max-w-lg rounded-2xl border border-line bg-surface p-5 shadow-[0_24px_70px_rgba(25,28,32,0.28)] sm:p-6"
+                className="relative z-10 max-h-[86vh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-2xl border border-line bg-surface p-5 shadow-[0_24px_70px_rgba(25,28,32,0.28)] sm:rounded-2xl sm:p-6"
             >
                 <div className="flex items-start justify-between gap-4">
                     <div>

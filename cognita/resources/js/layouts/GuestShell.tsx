@@ -1,6 +1,7 @@
 import { Link } from '@inertiajs/react';
 import { Microphone, PenNib, Key } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 import { routes } from '@/lib/routes';
 
 const promises = [
@@ -17,13 +18,16 @@ const promises = [
     {
         icon: PenNib,
         title: 'A board you both can use',
-        body: 'Present a PDF, a notebook page or a blank canvas, then hand the pen over.',
+        body: 'Present a PDF or a blank canvas, then hand the pen over.',
     },
 ];
 
 export default function GuestShell({ children }: { children: ReactNode }) {
     return (
-        <div className="min-h-[100dvh] bg-canvas">
+        <div className="relative min-h-[100dvh]">
+            <div className="absolute top-4 right-4 z-10 sm:top-6 sm:right-6">
+                <ThemeToggle />
+            </div>
             <div className="mx-auto grid min-h-[100dvh] w-full max-w-[1240px] grid-cols-1 gap-10 px-5 py-8 lg:grid-cols-[1.05fr_0.95fr] lg:items-center lg:gap-16 lg:px-8 lg:py-12">
                 <section className="flex flex-col gap-8">
                     <Link href={routes.welcome} className="flex items-center gap-2.5" aria-label="Cognita home">
@@ -46,7 +50,7 @@ export default function GuestShell({ children }: { children: ReactNode }) {
 
                     <ul className="grid gap-3 sm:grid-cols-3 lg:max-w-[520px]">
                         {promises.map((item) => (
-                            <li key={item.title} className="rounded-2xl border border-line bg-surface/70 p-4">
+                            <li key={item.title} className="rounded-2xl border border-line/80 bg-surface/75 p-4 shadow-card backdrop-blur-sm">
                                 <item.icon size={20} weight="duotone" className="text-brand" aria-hidden="true" />
                                 <p className="mt-2.5 text-[13px] font-semibold text-ink">{item.title}</p>
                                 <p className="mt-1 text-xs leading-relaxed text-ink-muted">{item.body}</p>

@@ -7,6 +7,7 @@ namespace App\Services;
 use App\Enums\UserRole;
 use App\Models\Classroom;
 use App\Models\Enrollment;
+use App\Models\Question;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -63,6 +64,42 @@ class ClassroomAccess
         }
 
         return $classroom;
+    }
+
+    /** Whether this user belongs in the class conversation: host or enrolled student. */
+    public function canParticipate(User $user, Classroom $classroom): bool
+    {
+        return $this->isHost($user, $classroom) || ($user->isStudent() && $classroom->hasMember($user));
+    }
+
+    public function assertParticipant(User $user, Classroom $classroom, string $message = 'Join this class before taking part in its questions.'): void
+    {
+        abort_unless($this->canParticipate($user, $classroom), 403, $message);
+    }
+
+    /** Community questions are open to every signed-in student and instructor; class questions stay inside the room. */
+    public function assertQuestionAccess(User $user, Question $question): void
+    {
+        if ($question->isCommunity()) {
+            abort_unless($user->isStudent() || $user->isInstructor(), 403, 'Only signed-in students and instructors can use the community board.');
+
+            return;
+        }
+
+        abort_if($question->classroom === null, 404);
+        $this->assertParticipant($user, $question->classroom);
+    }
+
+    /** Whether this user teaches the class (the only person who owns the board). */
+    public function isHost(?User $user, Classroom $classroom): bool
+    {
+        return $user !== null && (int) $classroom->instructor_id === (int) $user->getKey();
+    }
+
+    public function assertHost(?User $user, Classroom $classroom, string $message = 'Only the class instructor can change the board.'): void
+    {
+        abort_if($user === null, 401);
+        abort_unless($this->isHost($user, $classroom), 403, $message);
     }
 
     /**

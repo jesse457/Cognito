@@ -54,11 +54,3 @@ export function TextArea({ invalid, className, ...props }: TextareaProps) {
         />
     );
 }
-
-export function Select({ invalid, className, children, ...props }: InputHTMLAttributes<HTMLSelectElement> & { invalid?: boolean }) {
-    return (
-        <select {...props} className={cn(controlClass, 'pr-9', invalid && 'border-danger', className)}>
-            {children}
-        </select>
-    );
-}

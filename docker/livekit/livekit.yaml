@@ -3,16 +3,36 @@
 # API keys are supplied through LIVEKIT_KEYS in docker-compose.yml so no secret
 # is committed here. For production, terminate TLS at a reverse proxy and use
 # the deployment guide: https://docs.livekit.io/transport/self-hosting/deployment/
+#
+# For local development prefer .dev/livekit.sh: it runs the same server natively,
+# fills node_ip in from the machine current LAN address and starts the HTTPS
+# front a phone needs before it will open a microphone. This file is for a
+# plain Docker start.
+#
+# node_ip is deliberately NOT hardcoded here. It used to be, and the day the
+# machine moved to a different network every client was handed a dead address:
+# signalling connected, then media silently went nowhere and the call failed
+# with "UDP 7882 / 3478 is blocked". LiveKit fills in `node_ip` from its own
+# interfaces when the setting is absent, which follows the machine instead of
+# pinning a LAN address that will eventually be wrong. Override it only for a
+# deployment where the container cannot see the right interface:
+#
+#   LIVEKIT_NODE_IP=192.168.1.20 docker compose up -d livekit
 port: 7880
 
 rtc:
   tcp_port: 7881
   udp_port: 7882
+  
   use_external_ip: false
-  # For phone-over-LAN testing, advertise the Windows host's Wi-Fi IPv4
-  # address here (WSL's internal IP is not reachable from the phone):
-  node_ip: 192.168.26.1
+  # Answer on loopback too, so a browser on the Docker host can reach media.
   enable_loopback_candidate: true
+
+turn:
+  enabled: true
+  domain: localhost
+  udp_port: 3478
+  tls_port: 0
 
 room:
   auto_create: true

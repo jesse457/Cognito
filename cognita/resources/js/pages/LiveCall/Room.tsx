@@ -1,1160 +1,1131 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head } from '@inertiajs/react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import BoardWorkspace from '@/components/call/BoardWorkspace';
+import CallControls, { type Panel } from '@/components/call/CallControls';
+import CallHeader from '@/components/call/CallHeader';
+import CallLobby from '@/components/call/CallLobby';
+import CallNotices, { type Notice } from '@/components/call/CallNotices';
+import CallStage from '@/components/call/CallStage';
+import CommentsPanel from '@/components/call/CommentsPanel';
+import PeoplePanel from '@/components/call/PeoplePanel';
+import PollsPanel from '@/components/call/PollsPanel';
+import ConfirmDialog, { type ConfirmRequest } from '@/components/ui/ConfirmDialog';
+import { useToast } from '@/components/ui/Toast';
+import { useBoard, type BoardApi } from '@/hooks/useBoard';
+import { useCall } from '@/hooks/useCall';
+import { usePolls } from '@/hooks/usePolls';
+import { usePresence, type PresenceApi } from '@/hooks/usePresence';
+import { ApiError, patchJson, postJson } from '@/lib/http';
+import type { RecordingResult } from '@/lib/recording';
+import { routes } from '@/lib/routes';
+import { muteSound, playCue, soundMuted } from '@/lib/sound';
+import { tabSession } from '@/lib/tab-session';
+import { copyText, formatBytes } from '@/lib/utils';
 import {
-    ArrowLeft,
-    Check,
-    Copy,
-    HandPalm,
-    Info,
-    Microphone,
-    MicrophoneSlash,
-    PhoneDisconnect,
-    Spinner,
-    SquaresFour,
-    Users,
-    X,
-} from '@phosphor-icons/react';
-import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-    ConnectionState,
-    DisconnectReason,
-    Room as LiveKitRoom,
-    RoomEvent,
-    Track,
-    type Participant,
-    type RemoteAudioTrack,
-} from 'livekit-client';
-import BoardStage from '@/components/board/BoardStage';
-import BoardToolbar from '@/components/board/BoardToolbar';
-import type { BoardTool } from '@/components/board/BoardToolbar';
-import ParticipantTile from '@/components/call/ParticipantTile';
-import { cn, copyText, pluralize } from '@/lib/utils';
-import type { BoardState, BoardStroke, BoardSurface } from '@/types';
-
-type CallStatus = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected' | 'error';
+    PRESENCE_STALE_MS,
+    type BoardMessage,
+    type CallMessage,
+    type CallParticipant,
+    type CallRole,
+    type FrameSender,
+    type PresenceFrame,
+    type RealtimeConfig,
+} from '@/realtime';
+import type { BoardState, CommentEntry, RoomStudent } from '@/types';
 
 interface RoomPageProps {
-    classroom: {
-        id: number;
-        name: string;
-        join_code: string;
-        course: string | null;
-        instructor: string | null;
-    };
-    role: 'host' | 'participant';
+    classroom: { id: number; name: string; join_code: string; course: string | null; instructor: string | null };
+    role: CallRole;
+    viewerId: number;
+    viewerName: string;
+    students: RoomStudent[];
     board: BoardState;
-    canEditBoard: boolean;
     canManageBoard: boolean;
     room: string;
-    configured: boolean;
-    tokenUrl: string;
+    realtime: RealtimeConfig;
     boardUrl: string;
     boardPdfUrl: string;
     backUrl: string;
+    attendanceUrl: string | null;
 }
 
-interface TokenPayload {
-    url: string;
-    token: string;
-    room: string;
-    identity: string;
-    role: 'host' | 'participant';
-    expires_at: string;
-}
+const MAX_COMMENTS = 200;
+const COPY_FEEDBACK_MS = 1_600;
 
-interface ParticipantView {
-    identity: string;
-    name: string;
-    isLocal: boolean;
-    isSpeaking: boolean;
-    micEnabled: boolean;
-    role: 'host' | 'participant';
-}
-
-/** Who sent a realtime frame; only a host may steer the board. */
-type SenderRole = 'host' | 'participant';
-
-/** Realtime board messages travel over the LiveKit data channel. */
-type BoardMessage =
-    | { type: 'state'; board: BoardState }
-    | { type: 'stroke'; stroke: BoardStroke }
-    | { type: 'page'; page: number }
-    | { type: 'clear'; page: number };
-
-const BOARD_TOPIC = 'cognita.board';
-
-/** Keeps one stable participant identity per browser tab across reloads. */
-const SESSION_KEY = 'cognita.call.session';
-
-function callSession(): string {
-    const create = (): string => Math.random().toString(36).slice(2, 11).padEnd(6, '0');
-
-    try {
-        const stored = window.sessionStorage.getItem(SESSION_KEY);
-
-        if (stored !== null && /^[a-z0-9]{6,16}$/.test(stored)) {
-            return stored;
-        }
-
-        const created = create();
-        window.sessionStorage.setItem(SESSION_KEY, created);
-
-        return created;
-    } catch {
-        return create();
-    }
-}
-
-/** Why the server ended the session, in classroom language. */
-function disconnectMessage(reason: DisconnectReason | undefined): string | null {
-    switch (reason) {
-        case DisconnectReason.DUPLICATE_IDENTITY:
-            return 'This class was just opened somewhere else on this account. Rejoin here to take the seat back.';
-        case DisconnectReason.PARTICIPANT_REMOVED:
-            return 'You were removed from the call.';
-        case DisconnectReason.ROOM_DELETED:
-        case DisconnectReason.ROOM_CLOSED:
-            return 'The call was closed. Rejoin to start a new one.';
-        case DisconnectReason.SERVER_SHUTDOWN:
-            return 'The call server restarted. Rejoin to continue.';
-        case DisconnectReason.SIGNAL_CLOSE:
-            return 'The connection to the call server was lost. Rejoin to continue.';
-        case DisconnectReason.CONNECTION_TIMEOUT:
-        case DisconnectReason.MEDIA_FAILURE:
-            return 'The audio connection could not be established: the call server never received media from this device. UDP 7882 is blocked somewhere between this device and the server — test from the same machine first, or open UDP 7882 on the call server host.';
-        case DisconnectReason.JOIN_FAILURE:
-        case DisconnectReason.STATE_MISMATCH:
-            return 'The call server rejected this session. Reload the page and rejoin.';
-        case DisconnectReason.CLIENT_INITIATED:
-            return null;
-        default:
-            return null;
-    }
-}
-
-/** Which step of joining is running, so the lobby never looks frozen. */
-type JoinPhase = 'permission' | 'signal' | 'media';
-
-const joinPhaseLabel: Record<JoinPhase, string> = {
-    permission: 'Waiting for microphone permission…',
-    signal: 'Contacting the call server…',
-    media: 'Negotiating the audio connection…',
-};
-
-/** LiveKit reports an ICE failure as a bare "could not connect PC". */
-function joinErrorMessage(caught: unknown): string {
-    const raw = caught instanceof Error ? caught.message : String(caught);
-
-    if (/could not connect pc|failed to establish|pc connection|ice|timeout/i.test(raw)) {
-        return 'The call server answered, but the audio connection could not be established. The media port (UDP 7882) is not reachable between this device and the server — run .dev/livekit.sh on the server machine, or open UDP 7882.';
-    }
-
-    return raw === '' ? 'Could not join the call.' : raw;
-}
-
-function csrfToken(): string {
-    return document.querySelector<HTMLMetaElement>('meta[name="csrf-token"]')?.content ?? '';
-}
-
-function micErrorMessage(caught: unknown): string {
-    if (caught instanceof DOMException) {
-        if (['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(caught.name)) {
-            return 'Microphone access is blocked for this site. Allow it in the browser settings, or open this page over HTTPS.';
-        }
-
-        if (caught.name === 'NotFoundError') {
-            return 'No microphone was found on this device.';
-        }
-
-        if (['NotReadableError', 'TrackStartError'].includes(caught.name)) {
-            return 'The microphone is busy in another app.';
-        }
-    }
-
-    return 'The microphone could not be started.';
-}
-
-function roleFromMetadata(metadata: string | undefined): 'host' | 'participant' | null {
-    if (!metadata) {
-        return null;
-    }
-
-    try {
-        const parsed = JSON.parse(metadata) as { role?: string };
-
-        return parsed.role === 'host' ? 'host' : parsed.role === 'participant' ? 'participant' : null;
-    } catch {
-        return null;
-    }
-}
-
-const surfaceLabel: Record<BoardSurface, string> = {
-    canvas: 'Canvas',
-    notebook: 'Notebook',
-    pdf: 'PDF',
-};
-
+/**
+ * The live classroom.
+ *
+ * This file composes; it does not implement. Connections live in useCall, ink in
+ * useBoard, cursors in usePresence, and the pieces of the screen live in
+ * components/call. What is left here is the part that is genuinely about this
+ * page: who is here, what just happened, and what to tell the person looking at
+ * it.
+ */
 export default function LiveCallRoom({
     classroom,
     role,
+    viewerId,
+    viewerName,
+    students: initialStudents,
     board: initialBoard,
-    canEditBoard,
     canManageBoard,
-    room: roomName,
-    configured,
-    tokenUrl,
+    realtime,
     boardUrl,
     boardPdfUrl,
     backUrl,
+    attendanceUrl,
 }: RoomPageProps) {
-    const roomRef = useRef<LiveKitRoom | null>(null);
-    const boardRef = useRef<BoardState>(initialBoard);
-    const saveTimer = useRef<number | null>(null);
-    const pendingPatch = useRef<Record<string, unknown>>({});
-    const decoder = useRef(new TextDecoder());
-    const encoder = useRef(new TextEncoder());
+    const toast = useToast();
 
-    const [status, setStatus] = useState<CallStatus>('idle');
-    const [error, setError] = useState<string | null>(null);
-    const [notice, setNotice] = useState<string | null>(null);
-    const [phase, setPhase] = useState<JoinPhase | null>(null);
-    const [audioBlocked, setAudioBlocked] = useState(false);
-    const [participants, setParticipants] = useState<ParticipantView[]>([]);
-    const [audioTracks, setAudioTracks] = useState<RemoteAudioTrack[]>([]);
-    const [micEnabled, setMicEnabled] = useState(false);
-
-    const [board, setBoard] = useState<BoardState>(initialBoard);
+    const [soundOn, setSoundOn] = useState(() => !soundMuted());
     const [boardOpen, setBoardOpen] = useState(false);
-    const [panel, setPanel] = useState<'none' | 'people'>('none');
-    const [uploading, setUploading] = useState(false);
-
-    const [tool, setTool] = useState<BoardTool>('pen');
-    const [color, setColor] = useState('#191c20');
-    const [width, setWidth] = useState(0.004);
-
+    const [panel, setPanel] = useState<Panel>(null);
+    const [comments, setComments] = useState<CommentEntry[]>([]);
+    const [draft, setDraft] = useState('');
+    const [students, setStudents] = useState<RoomStudent[]>(initialStudents);
+    const [drawBusy, setDrawBusy] = useState<number | null>(null);
+    const [kicking, setKicking] = useState<string | null>(null);
+    const [permissionBusy, setPermissionBusy] = useState<string | null>(null);
+    const [confirm, setConfirm] = useState<ConfirmRequest | null>(null);
+    const [handRaised, setHandRaised] = useState(false);
+    const [hidden, setHidden] = useState(() => (typeof document === 'undefined' ? false : document.hidden));
     const [copied, setCopied] = useState(false);
-    const secureContext = typeof window !== 'undefined' ? window.isSecureContext : false;
+    const [fullscreenBoard, setFullscreenBoard] = useState(false);
+    const [fullscreenControlsVisible, setFullscreenControlsVisible] = useState(true);
 
-    const connected = status === 'connected';
-    const reconnecting = status === 'reconnecting';
+    // Bridges: the call hook needs the board and presence hooks, and both need
+    // the call hook. A ref each breaks the circle without re-creating them.
+    const boardRef = useRef<BoardApi | null>(null);
+    const presenceRef = useRef<PresenceApi | null>(null);
+    const panelRef = useRef<Panel>(null);
+    panelRef.current = panel;
 
-    // The stage stays mounted through a reconnect so a blip does not throw the
-    // room away; only a real disconnect returns to the lobby.
-    const inCall = connected || reconnecting;
-    const joining = status === 'connecting';
+    // What the last render saw, so transitions can be announced exactly once.
+    const seen = useRef({
+        participants: new Map<string, string>(),
+        hands: new Set<string>(),
+        session: initialBoard.session,
+        annotate: initialBoard.studentsCanAnnotate,
+        share: null as string | null,
+        error: null as string | null,
+    });
 
-    const commitBoard = useCallback((next: BoardState) => {
-        boardRef.current = next;
-        setBoard(next);
+    const talkSeen = useRef<{ identity: string | null; canTalk: boolean }>({ identity: null, canTalk: false });
+
+    const secureContext = typeof window === 'undefined' ? true : window.isSecureContext;
+
+    const onBoardFrame = useCallback((message: BoardMessage, sender: FrameSender) => {
+        boardRef.current?.applyRemote(message, sender);
     }, []);
 
-    // --- Board persistence ------------------------------------------------
-    const flushBoard = useCallback(async (): Promise<void> => {
-        const patch = pendingPatch.current;
-        pendingPatch.current = {};
-
-        if (Object.keys(patch).length === 0) {
-            return;
-        }
-
-        try {
-            await fetch(boardUrl, {
-                method: 'PATCH',
-                credentials: 'same-origin',
-                headers: {
-                    Accept: 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken(),
-                },
-                body: JSON.stringify(patch),
-            });
-        } catch {
-            // The board stays usable locally; the next edit retries the save.
-        }
-    }, [boardUrl]);
-
-    const queueSave = useCallback(
-        (patch: Record<string, unknown>, immediate = false): void => {
-            pendingPatch.current = { ...pendingPatch.current, ...patch };
-
-            if (saveTimer.current !== null) {
-                window.clearTimeout(saveTimer.current);
-            }
-
-            if (immediate) {
-                void flushBoard();
-
-                return;
-            }
-
-            saveTimer.current = window.setTimeout(() => void flushBoard(), 800);
-        },
-        [flushBoard],
-    );
-
-    useEffect(() => {
-        return () => {
-            if (saveTimer.current !== null) {
-                window.clearTimeout(saveTimer.current);
-            }
-        };
+    const onPresenceFrame = useCallback((frame: PresenceFrame) => {
+        presenceRef.current?.accept(frame);
     }, []);
 
-    // --- Broadcast --------------------------------------------------------
-    const broadcast = useCallback((message: BoardMessage): void => {
-        const room = roomRef.current;
-
-        if (room === null || room.state !== ConnectionState.Connected) {
-            return;
-        }
-
-        void room.localParticipant.publishData(encoder.current.encode(JSON.stringify(message)), {
-            reliable: true,
-            topic: BOARD_TOPIC,
-        });
+    const onBoardState = useCallback((state: BoardState) => {
+        boardRef.current?.adopt(state);
     }, []);
 
-    const broadcastState = useCallback(
-        (next: BoardState) => {
-            broadcast({ type: 'state', board: next });
-        },
-        [broadcast],
-    );
-
-    // --- Board actions ----------------------------------------------------
-    function handleStroke(stroke: BoardStroke): void {
-        const current = boardRef.current;
-
-        if (!canEditBoard) {
-            return;
-        }
-
-        const strokes = [...current.strokes, stroke].sort((a, b) => a.id - b.id);
-        const next = { ...current, strokes };
-
-        commitBoard(next);
-        broadcast({ type: 'stroke', stroke });
-        queueSave({ strokes });
-    }
-
-    function handleSurface(surface: BoardSurface): void {
-        if (!canManageBoard) {
-            return;
-        }
-
-        const current = boardRef.current;
-        const next: BoardState = {
-            ...current,
-            surface,
-            title: surfaceLabel[surface],
-            pages: surface === 'pdf' ? Math.max(1, current.document?.pages ?? 1) : surface === 'notebook' ? 8 : 1,
-            page: Math.min(current.page, surface === 'pdf' ? Math.max(1, current.document?.pages ?? 1) : surface === 'notebook' ? 8 : 1),
-        };
-
-        commitBoard(next);
-        broadcastState(next);
-        queueSave({ surface }, true);
-    }
-
-    function handlePage(page: number): void {
-        if (!canManageBoard) {
-            return;
-        }
-
-        const current = boardRef.current;
-        const next = { ...current, page };
-
-        commitBoard(next);
-        broadcast({ type: 'page', page });
-        queueSave({ page }, true);
-    }
-
-    function handleToggleStudents(): void {
-        if (!canManageBoard) {
-            return;
-        }
-
-        const current = boardRef.current;
-        const next = { ...current, studentsCanAnnotate: !current.studentsCanAnnotate };
-
-        commitBoard(next);
-        broadcastState(next);
-        queueSave({ students_can_annotate: next.studentsCanAnnotate }, true);
-    }
-
-    function handleClear(): void {
-        if (!canManageBoard) {
-            return;
-        }
-
-        const current = boardRef.current;
-        const page = current.page;
-        const strokes = current.strokes.filter((stroke) => stroke.page !== page);
-
-        commitBoard({ ...current, strokes });
-        broadcast({ type: 'clear', page });
-        queueSave({ strokes }, true);
-    }
-
-    const handlePageCount = useCallback(
-        (pages: number): void => {
-            const current = boardRef.current;
-
-            if (current.surface !== 'pdf' || pages < 1) {
-                return;
-            }
-
-            if (current.pages === pages) {
-                return;
-            }
-
-            const next: BoardState = {
-                ...current,
-                pages,
-                document: current.document === null ? null : { ...current.document, pages },
-            };
-
-            commitBoard(next);
-
-            if (canManageBoard) {
-                broadcastState(next);
-                queueSave({ pages }, true);
-            }
-        },
-        [broadcastState, canManageBoard, commitBoard, queueSave],
-    );
-
-    async function uploadPdf(file: File): Promise<void> {
-        if (!canManageBoard) {
-            return;
-        }
-
-        setUploading(true);
-        setNotice(null);
-
-        try {
-            const body = new FormData();
-            body.append('document', file);
-
-            const response = await fetch(boardPdfUrl, {
-                method: 'POST',
-                credentials: 'same-origin',
-                headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrfToken() },
-                body,
-            });
-
-            if (!response.ok) {
-                setNotice('That file could not be uploaded. PDFs up to 25 MB only.');
-
-                return;
-            }
-
-            const payload = (await response.json()) as { data: BoardState };
-
-            commitBoard(payload.data);
-            broadcastState(payload.data);
-        } catch {
-            setNotice('That file could not be uploaded. Try again.');
-        } finally {
-            setUploading(false);
-        }
-    }
-
-    // --- LiveKit ----------------------------------------------------------
-    const refresh = useCallback((): void => {
-        const room = roomRef.current;
-
-        if (room === null) {
-            return;
-        }
-
-        const toView = (participant: Participant, fallback: 'host' | 'participant'): ParticipantView => ({
-            identity: participant.identity,
-            name: participant.name || participant.identity,
-            isLocal: participant.identity === room.localParticipant.identity,
-            isSpeaking: participant.isSpeaking,
-            micEnabled: participant.isMicrophoneEnabled,
-            role: roleFromMetadata(participant.metadata) ?? fallback,
-        });
-
-        const next = [
-            toView(room.localParticipant, role),
-            ...Array.from(room.remoteParticipants.values()).map((participant) => toView(participant, 'participant')),
-        ];
-
-        const tracks: RemoteAudioTrack[] = [];
-
-        for (const participant of room.remoteParticipants.values()) {
-            for (const publication of participant.trackPublications.values()) {
-                const track = publication.track;
-
-                if (track !== undefined && track.kind === Track.Kind.Audio) {
-                    tracks.push(track as RemoteAudioTrack);
-                }
-            }
-        }
-
-        setParticipants(next);
-        setAudioTracks(tracks);
-        setMicEnabled(room.localParticipant.isMicrophoneEnabled);
-        setAudioBlocked(!room.canPlaybackAudio);
-    }, [role]);
-
-    const applyRemote = useCallback(
-        (message: BoardMessage, sender: SenderRole): void => {
-            const current = boardRef.current;
-
-            // Students own strokes only; the host steers surface, page and clears.
-            if (sender === 'participant') {
-                if (message.type !== 'stroke') {
-                    return;
-                }
-
-                if (!current.studentsCanAnnotate) {
-                    return;
-                }
-            }
-
-            if (message.type === 'state') {
-                if (message.board === undefined) {
-                    return;
-                }
-
-                commitBoard(message.board);
-
-                return;
-            }
-
-            if (message.type === 'stroke') {
-                if (current.strokes.some((stroke) => stroke.id === message.stroke.id)) {
-                    return;
-                }
-
-                commitBoard({
-                    ...current,
-                    strokes: [...current.strokes, message.stroke].sort((a, b) => a.id - b.id),
-                });
-
-                return;
-            }
-
-            if (message.type === 'page') {
-                commitBoard({ ...current, page: message.page });
-
-                return;
-            }
-
-            if (message.type === 'clear') {
-                commitBoard({ ...current, strokes: current.strokes.filter((stroke) => stroke.page !== message.page) });
-            }
-        },
-        [commitBoard],
-    );
-
-    useEffect(() => {
-        return () => {
-            void roomRef.current?.disconnect();
-            roomRef.current = null;
-        };
-    }, []);
-
-    async function joinCall(): Promise<void> {
-        if (joining || inCall) {
-            return;
-        }
-
-        setStatus('connecting');
-        setError(null);
-        setNotice(null);
-        setPhase('permission');
-
-        if (!secureContext) {
-            setNotice('Joined without a microphone: this address is not a secure origin, so the browser blocks it.');
-        } else {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                stream.getTracks().forEach((track) => track.stop());
-            } catch (caught) {
-                setNotice(`Joining muted. ${micErrorMessage(caught)}`);
-            }
-        }
-
-        setPhase('signal');
-
-        try {
-            const payload = await requestToken(tokenUrl, callSession());
-            const room = new LiveKitRoom({
-                adaptiveStream: true,
-                dynacast: true,
-                audioCaptureDefaults: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-            });
-
-            roomRef.current = room;
-
-            const resync = (): void => {
-                refresh();
-
-                // A late joiner boots from a server snapshot that may already be
-                // stale, so hand it the live board as soon as it connects.
-                if (canManageBoard) {
-                    broadcastState(boardRef.current);
-                }
-            };
-
-            room.on(RoomEvent.ParticipantConnected, resync)
-                .on(RoomEvent.ParticipantDisconnected, refresh)
-                .on(RoomEvent.ActiveSpeakersChanged, refresh)
-                .on(RoomEvent.ParticipantMetadataChanged, refresh)
-                .on(RoomEvent.TrackMuted, refresh)
-                .on(RoomEvent.TrackUnmuted, refresh)
-                .on(RoomEvent.TrackSubscribed, refresh)
-                .on(RoomEvent.TrackUnsubscribed, refresh)
-                .on(RoomEvent.LocalTrackPublished, refresh)
-                .on(RoomEvent.LocalTrackUnpublished, refresh)
-                .on(RoomEvent.AudioPlaybackStatusChanged, refresh)
-                .on(RoomEvent.SignalConnected, () => setPhase('media'));
-
-            room.on(RoomEvent.DataReceived, (payloadBytes, participant, _kind, topic) => {
-                if (topic !== BOARD_TOPIC) {
-                    return;
-                }
-
-                const sender = roleFromMetadata(participant?.metadata) ?? 'participant';
-
-                try {
-                    applyRemote(JSON.parse(decoder.current.decode(payloadBytes)) as BoardMessage, sender);
-                } catch {
-                    // Ignore malformed frames rather than dropping the call.
-                }
-            });
-
-            room.on(RoomEvent.ConnectionStateChanged, (state) => {
-                if (state === ConnectionState.Connected) {
-                    setStatus('connected');
-                }
-
-                if (state === ConnectionState.Reconnecting) {
-                    setStatus('reconnecting');
-                }
-            });
-
-            room.on(RoomEvent.Reconnecting, () => {
-                setStatus('reconnecting');
-                setNotice('Connection dropped. Reconnecting…');
-            });
-
-            room.on(RoomEvent.Reconnected, () => {
-                setStatus('connected');
-                setNotice(null);
-                refresh();
-
-                if (canManageBoard) {
-                    broadcastState(boardRef.current);
-                }
-            });
-
-            room.on(RoomEvent.MediaDevicesError, (caught: Error) => setNotice(micErrorMessage(caught)));
-
-            room.on(RoomEvent.Disconnected, (reason?: DisconnectReason) => {
-                setStatus('disconnected');
-                setParticipants([]);
-                setAudioTracks([]);
-                setMicEnabled(false);
-                setAudioBlocked(false);
-
-                const message = disconnectMessage(reason);
-
-                if (message !== null) {
-                    setError(message);
-                }
-            });
-
-            // A wedged WebSocket or a blocked media port leaves connect()
-            // pending forever; fail loudly instead of sitting in "Joining…".
-            let watchdog: number | undefined;
-
-            try {
-                await Promise.race([
-                    room.connect(payload.url, payload.token, { autoSubscribe: true }),
-                    new Promise<never>((_, reject) => {
-                        watchdog = window.setTimeout(
-                            () =>
-                                reject(
-                                    new Error(
-                                        'The call server did not answer within 25 seconds. Check that the LiveKit URL is reachable from this device and that UDP 7882 is open.',
-                                    ),
-                                ),
-                            25_000,
-                        );
-                    }),
-                ]);
-            } finally {
-                if (watchdog !== undefined) {
-                    window.clearTimeout(watchdog);
-                }
-            }
-
-            setStatus('connected');
-            setPhase(null);
-            refresh();
-
-            void room.startAudio().then(
-                () => setAudioBlocked(!room.canPlaybackAudio),
-                () => setAudioBlocked(true),
+    const onComment = useCallback(
+        (message: CallMessage, sender: FrameSender) => {
+            setComments((current) =>
+                current.some((comment) => comment.id === message.id)
+                    ? current
+                    : [
+                          ...current,
+                          {
+                              id: message.id,
+                              body: message.body,
+                              at: message.at,
+                              senderName: sender.name ?? 'Someone',
+                              mine: false,
+                          },
+                      ].slice(-MAX_COMMENTS),
             );
 
-            try {
-                await room.localParticipant.setMicrophoneEnabled(true);
-                setMicEnabled(true);
-            } catch (caught) {
-                setNotice(`You joined muted. ${micErrorMessage(caught)}`);
-            }
+            playCue('message');
 
-            if (canManageBoard) {
-                broadcastState(boardRef.current);
+            if (panelRef.current !== 'comments') {
+                toast.push({
+                    title: sender.name ?? 'Someone',
+                    description: message.body,
+                    tone: 'info',
+                    duration: 5_000,
+                });
             }
-        } catch (caught) {
-            setStatus('error');
-            setPhase(null);
-            setError(joinErrorMessage(caught));
-            await roomRef.current?.disconnect();
-            roomRef.current = null;
+        },
+        [toast],
+    );
+
+    const call = useCall({
+        realtime,
+        role,
+        tabSession: tabSession(),
+        secureContext,
+        fallbackName: viewerName,
+        initialSession: initialBoard.session,
+        onBoardFrame,
+        onPresenceFrame,
+        onComment,
+        onBoardState,
+    });
+
+    const presence = usePresence({
+        active: call.inCall,
+        identity: call.identity,
+        name: call.name,
+        role,
+        send: call.send.presence,
+    });
+    presenceRef.current = presence;
+
+    const polls = usePolls(classroom.id, call.inCall);
+
+    const board = useBoard({
+        initial: initialBoard,
+        canManage: canManageBoard,
+        viewerId,
+        saveUrl: boardUrl,
+        uploadUrl: boardPdfUrl,
+        identity: call.identity,
+        send: call.send.board,
+        onNotice: (message) => toast.push({ title: 'The board was not saved', description: message, tone: 'error' }),
+        onUploaded: (name) => {
+            toast.push({ title: `${name} is on the board`, tone: 'success' });
+            playCue('copy');
+        },
+    });
+    boardRef.current = board;
+
+    const state = board.board;
+    const hands = useMemo(
+        () =>
+            new Set(
+                presence.frames
+                    .filter((frame) => frame.handRaised && presence.now - frame.ts < PRESENCE_STALE_MS)
+                    .map((frame) => frame.identity),
+            ),
+        [presence.frames, presence.now],
+    );
+
+    const localParticipant = call.participants.find((participant) => participant.isLocal);
+    const canTalk = role === 'host' || localParticipant?.canPublish === true;
+    const canShareScreen = canTalk && !call.previewOnly;
+    const canManageAudio = canManageBoard && !call.previewOnly;
+    const sharing = call.participants.find((participant) => participant.screenShare !== null) ?? null;
+
+    const announcedPoll = useRef<number | null>(null);
+
+    useEffect(() => {
+        const poll = polls.active;
+
+        if (!call.inCall || poll === null) {
+            announcedPoll.current = null;
+
+            return;
         }
-    }
 
-    async function toggleMicrophone(): Promise<void> {
-        const room = roomRef.current;
+        if (announcedPoll.current === poll.id) {
+            return;
+        }
 
-        if (room === null) {
+        announcedPoll.current = poll.id;
+
+        if (panelRef.current === 'polls') {
+            return;
+        }
+
+        playCue('message');
+        toast.push({
+            title: 'Live poll started',
+            description: poll.question,
+            tone: 'info',
+            duration: 8_000,
+            action: {
+                label: role === 'host' ? 'Open' : 'Answer',
+                onClick: () => setPanel('polls'),
+            },
+        });
+    }, [call.inCall, polls.active, role, toast]);
+
+    // -- presence ----------------------------------------------------------
+
+    useEffect(() => {
+        if (!call.inCall) {
+            return;
+        }
+
+        presence.update({
+            surface: state.surface,
+            page: state.page,
+            tool: board.tool,
+            boardOpen,
+            hidden,
+            handRaised,
+        });
+    }, [call.inCall, presence.update, state.surface, state.page, board.tool, boardOpen, hidden, handRaised]);
+
+    useEffect(() => {
+        function onVisibility(): void {
+            setHidden(document.hidden);
+        }
+
+        document.addEventListener('visibilitychange', onVisibility);
+
+        return () => document.removeEventListener('visibilitychange', onVisibility);
+    }, []);
+
+    // The host's canvas is the room's ink. When the room changes — opened, or
+    // restarted with the sparkle — say so at once, so every browser blanks its
+    // own canvas at the same moment instead of waiting for a heartbeat.
+    const announcedRoom = useRef<string | null>(initialBoard.session);
+
+    useEffect(() => {
+        const token = call.session;
+
+        if (!call.inCall || !canManageBoard || token === null || announcedRoom.current === token) {
+            return;
+        }
+
+        announcedRoom.current = token;
+        call.send.board({ type: 'state', board: board.board });
+    }, [call.inCall, canManageBoard, call.session, call.send, board.board]);
+
+    // Nobody stores the ink, so a late joiner has to ask for it. The host answers
+    // with the room as it stands; a few tries covers a join that races the
+    // host's own connection.
+    const asked = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (!call.inCall || canManageBoard || call.session === null) {
+            return;
+        }
+
+        const key = `${call.session}:${call.identity ?? 'pending'}`;
+
+        if (asked.current === key) {
+            return;
+        }
+
+        asked.current = key;
+
+        const timers = [0, 1_200, 3_500].map((delay) =>
+            window.setTimeout(() => call.send.board({ type: 'ask' }), delay),
+        );
+
+        return () => timers.forEach((timer) => window.clearTimeout(timer));
+    }, [call.inCall, call.session, call.identity, call.send, canManageBoard]);
+
+    // -- announcements -----------------------------------------------------
+
+    // The room the page was rendered with can end, or be replaced by a fresh one.
+    useEffect(() => {
+        const before = seen.current.session;
+        seen.current.session = call.session;
+
+        if (before === call.session) {
+            return;
+        }
+
+        if (call.session === null) {
+            board.reset();
+
+            // Our own leave already said its piece; this is for a room that ends
+            // while we are still watching it.
+            if (!call.inCall) {
+                return;
+            }
+
+            playCue('room');
+            toast.push({
+                title: 'The room ended',
+                description: 'Drawings live in the room only, so they are gone. The class PDFs are still here.',
+                tone: 'warn',
+                duration: 8_000,
+            });
+
+            return;
+        }
+
+        if (before !== null) {
+            playCue('room');
+            toast.push({ title: 'A new room started', description: 'The board is blank again for this lesson.', tone: 'info' });
+        }
+    }, [call.session, call.inCall, board, toast]);
+
+    useEffect(() => {
+        const before = seen.current.participants;
+        const names = new Map(call.participants.map((participant) => [participant.identity, participant.name]));
+        const joined = call.participants.filter((participant) => !participant.isLocal && !before.has(participant.identity));
+        const left = [...before.entries()].filter(([identity]) => !names.has(identity));
+
+        seen.current.participants = names;
+
+        joined.forEach((participant) => {
+            playCue('join');
+            toast.push({ title: `${participant.name} joined`, tone: 'success' });
+        });
+
+        left.forEach(([, name]) => {
+            playCue('leave');
+            toast.push({ title: `${name} left`, tone: 'info' });
+        });
+    }, [call.participants, toast]);
+
+    useEffect(() => {
+        const before = seen.current.hands;
+        seen.current.hands = hands;
+
+        [...hands]
+            .filter((identity) => !before.has(identity) && identity !== call.identity)
+            .forEach((identity) => {
+                const frame = presence.frames.find((item) => item.identity === identity);
+
+                if (frame === undefined) {
+                    return;
+                }
+
+                playCue('hand');
+                toast.push({ title: `${frame.name} raised a hand`, tone: 'warn', duration: 6_000 });
+            });
+    }, [hands, presence.frames, call.identity, toast]);
+
+    // The instructor opened or closed this student's microphone. The transport
+    // has already applied the audio change; this is the human sentence for it.
+    useEffect(() => {
+        if (!call.inCall || role === 'host') {
+            talkSeen.current = { identity: call.identity, canTalk };
+
+            return;
+        }
+
+        const previous = talkSeen.current;
+        talkSeen.current = { identity: call.identity, canTalk };
+
+        if (previous.identity === null || previous.identity !== call.identity || previous.canTalk === canTalk) {
+            return;
+        }
+
+        if (canTalk) {
+            playCue('join');
+            toast.push({
+                title: 'The instructor let you talk',
+                description: 'Your microphone is on. Mute it in the bar when you are done.',
+                tone: 'success',
+                duration: 6_000,
+            });
+
+            if (handRaised) {
+                setHandRaised(false);
+                presenceRef.current?.raiseHand(false);
+            }
+
+            return;
+        }
+
+        playCue('leave');
+        toast.push({
+            title: 'Your microphone was closed',
+            description: 'Raise your hand when you want to speak again.',
+            tone: 'info',
+            duration: 6_000,
+        });
+    }, [call.inCall, call.identity, canTalk, handRaised, role, toast]);
+
+    useEffect(() => {
+        const identity = sharing?.identity ?? null;
+        const before = seen.current.share;
+
+        seen.current.share = identity;
+
+        if (identity === null || identity === before || identity === call.identity || sharing === null) {
+            return;
+        }
+
+        playCue('join');
+        toast.push({
+            title: `${sharing.name} is sharing a screen`,
+            description: boardOpen ? 'Hide the board to watch it.' : 'The shared screen is on the main stage.',
+            tone: 'info',
+            duration: 7_000,
+            action: boardOpen ? { label: 'Show screen', onClick: () => setBoardOpen(false) } : undefined,
+        });
+    }, [sharing, boardOpen, call.identity, toast]);
+
+    useEffect(() => {
+        const before = seen.current.annotate;
+        seen.current.annotate = state.studentsCanAnnotate;
+
+        if (before === state.studentsCanAnnotate || canManageBoard) {
+            return;
+        }
+
+        if (state.studentsCanAnnotate) {
+            if (board.canDraw) {
+                playCue('pen');
+            }
+
+            toast.push({
+                title: board.canDraw ? 'You can draw now' : 'Students can draw now',
+                description: 'Pick a pen from the board toolbar.',
+                tone: 'success',
+                duration: 6_000,
+            });
+
+            return;
+        }
+
+        toast.push({ title: 'The pen is back with the instructor', tone: 'info' });
+    }, [state.studentsCanAnnotate, canManageBoard, board.canDraw, toast]);
+
+    useEffect(() => {
+        if (call.error === null || call.error === seen.current.error) {
+            return;
+        }
+
+        seen.current.error = call.error;
+        playCue('error');
+        toast.push({ title: 'Call problem', description: call.error, tone: 'error', duration: 9_000 });
+    }, [call.error, toast]);
+
+    useEffect(() => {
+        if (call.audioBlocked) {
+            playCue('error');
+        }
+    }, [call.audioBlocked]);
+
+    // The hook saves the file the moment a recording stops; this is the human
+    // sentence for it, with the name and size so it can be found again.
+    const announcedRecording = useRef<RecordingResult | null>(null);
+
+    useEffect(() => {
+        const result = call.lastRecording;
+
+        if (result === null || announcedRecording.current === result) {
+            return;
+        }
+
+        announcedRecording.current = result;
+        playCue('copy');
+        toast.push({
+            title: 'Recording saved to this device',
+            description: `${result.fileName} · ${formatBytes(result.blob.size)}. Nothing was uploaded.`,
+            tone: 'success',
+            duration: 10_000,
+        });
+    }, [call.lastRecording, toast]);
+
+    // Closing the tab throws away an unfinished recording, so say so first.
+    useEffect(() => {
+        if (!call.recording) {
+            return;
+        }
+
+        const warn = (event: BeforeUnloadEvent): void => {
+            event.preventDefault();
+            event.returnValue = '';
+        };
+
+        window.addEventListener('beforeunload', warn);
+
+        return () => window.removeEventListener('beforeunload', warn);
+    }, [call.recording]);
+
+    // -- actions -----------------------------------------------------------
+
+    // Publishing a presence frame is a side effect, so it must not live inside a
+    // setState updater: React is free to run an updater more than once, and a
+    // doubled frame is a doubled hand-raise that the next toggle then cancels.
+    const toggleHand = useCallback(() => {
+        const next = !handRaised;
+
+        setHandRaised(next);
+        presenceRef.current?.raiseHand(next);
+    }, [handRaised]);
+
+    const toggleScreenShare = useCallback(() => {
+        if (!call.screenShareEnabled) {
+            setBoardOpen(false);
+            setFullscreenBoard(false);
+            setFullscreenControlsVisible(true);
+        }
+
+        void call.toggleScreenShare();
+    }, [call.screenShareEnabled, call.toggleScreenShare]);
+
+    const toggleSound = useCallback(() => {
+        setSoundOn((current) => !current);
+    }, []);
+
+    const handleFullscreenChange = useCallback((active: boolean): void => {
+        setFullscreenBoard(active);
+
+        if (active) {
+            setFullscreenControlsVisible(true);
+        }
+    }, []);
+
+    const toggleBoard = useCallback(() => {
+        const next = !boardOpen;
+
+        setBoardOpen(next);
+
+        if (!next) {
+            setFullscreenBoard(false);
+            setFullscreenControlsVisible(true);
+        }
+    }, [boardOpen]);
+
+    // One place writes the preference, so the choice survives a refresh.
+    useEffect(() => {
+        muteSound(!soundOn);
+    }, [soundOn]);
+
+    const toggleRecording = useCallback(async (): Promise<void> => {
+        if (call.recording) {
+            await call.stopRecording();
+
             return;
         }
 
         try {
-            await room.localParticipant.setMicrophoneEnabled(!room.localParticipant.isMicrophoneEnabled);
-            setMicEnabled(room.localParticipant.isMicrophoneEnabled);
-            refresh();
-        } catch (caught) {
-            setNotice(micErrorMessage(caught));
+            await call.startRecording(classroom.name);
+            playCue('copy');
+            toast.push({
+                title: 'Recording to this device',
+                description: 'Press Stop when the lesson is over. The file downloads; nothing is uploaded.',
+                tone: 'info',
+                duration: 7_000,
+            });
+        } catch (error) {
+            toast.push({
+                title: 'Recording could not start',
+                description: error instanceof Error ? error.message : 'Please try again.',
+                tone: 'error',
+            });
         }
-    }
+    }, [call.recording, call.startRecording, call.stopRecording, classroom.name, toast]);
 
-    async function enableAudio(): Promise<void> {
-        const room = roomRef.current;
+    const copyKey = useCallback(async (): Promise<void> => {
+        if (!(await copyText(classroom.join_code))) {
+            toast.push({ title: 'Could not copy the key', description: classroom.join_code, tone: 'warn' });
 
-        if (room === null) {
             return;
         }
 
-        try {
-            await room.startAudio();
-            setAudioBlocked(!room.canPlaybackAudio);
-        } catch {
-            setNotice('Could not start audio playback.');
-        }
-    }
+        setCopied(true);
+        playCue('copy');
+        toast.push({ title: 'Class key copied', description: classroom.join_code, tone: 'success' });
+        window.setTimeout(() => setCopied(false), COPY_FEEDBACK_MS);
+    }, [classroom.join_code, toast]);
 
-    async function leaveCall(): Promise<void> {
-        const room = roomRef.current;
-        roomRef.current = null;
-        setStatus('idle');
-        setParticipants([]);
-        setAudioTracks([]);
-        setMicEnabled(false);
-        setAudioBlocked(false);
+    const sendComment = useCallback(() => {
+        const body = draft.trim();
+
+        if (body === '' || !call.inCall) {
+            return;
+        }
+
+        const message: CallMessage = {
+            type: 'comment',
+            id: `c-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            at: Date.now(),
+            body,
+        };
+
+        call.send.comment(message);
+        setComments((current) =>
+            [...current, { id: message.id, body, at: message.at, senderName: call.name, mine: true }].slice(-MAX_COMMENTS),
+        );
+        setDraft('');
+    }, [draft, call.inCall, call.send, call.name]);
+
+    const leave = useCallback(async (): Promise<void> => {
+        await call.leave();
         setBoardOpen(false);
+        setFullscreenBoard(false);
+        setFullscreenControlsVisible(true);
+        setPanel(null);
+        setHandRaised(false);
+        playCue('leave');
+        toast.push({
+            title: 'You left the call',
+            description:
+                role === 'host'
+                    ? 'The class session stays open. Press End class when the lesson is over.'
+                    : 'The class session stays open; rejoin with the same link when you are ready.',
+            tone: 'info',
+        });
+    }, [call.leave, role, toast]);
 
-        if (saveTimer.current !== null) {
-            window.clearTimeout(saveTimer.current);
+    const endClass = useCallback((): void => {
+        setConfirm({
+            title: 'End the class for everyone?',
+            description:
+                'Every participant is disconnected, open attendance closes, and the next join starts a new class session with a blank board.',
+            confirmLabel: 'End class',
+            tone: 'danger',
+            onConfirm: () => {
+                setConfirm(null);
+
+                void (async () => {
+                    try {
+                        await call.endClass();
+                        setBoardOpen(false);
+                        setFullscreenBoard(false);
+                        setFullscreenControlsVisible(true);
+                        setPanel(null);
+                        setHandRaised(false);
+                        playCue('leave');
+                        toast.push({
+                            title: 'Class ended',
+                            description: 'Everyone was disconnected and attendance is closed.',
+                            tone: 'success',
+                        });
+                    } catch (error) {
+                        toast.push({
+                            title: 'The class could not be ended',
+                            description: error instanceof ApiError ? error.message : 'Please try again.',
+                            tone: 'error',
+                        });
+                    }
+                })();
+            },
+        });
+    }, [call.endClass, toast]);
+
+    const removeParticipant = useCallback(
+        (participant: CallParticipant): void => {
+            setConfirm({
+                title: `Remove ${participant.name}?`,
+                description: 'They drop out of this call immediately and can rejoin with the class key.',
+                confirmLabel: 'Remove',
+                tone: 'danger',
+                onConfirm: () => {
+                    setConfirm(null);
+                    setKicking(participant.identity);
+
+                    void (async () => {
+                        try {
+                            await postJson(routes.callParticipantRemove(classroom.id, participant.identity), {});
+                            playCue('leave');
+                            toast.push({ title: `${participant.name} was removed from the call`, tone: 'success' });
+                        } catch (error) {
+                            toast.push({
+                                title: 'That did not work',
+                                description: error instanceof ApiError ? error.message : 'Please try again.',
+                                tone: 'error',
+                            });
+                        } finally {
+                            setKicking(null);
+                        }
+                    })();
+                },
+            });
+        },
+        [classroom.id, toast],
+    );
+
+    const setTalkPermission = useCallback(
+        (participant: CallParticipant, allowed: boolean): void => {
+            setPermissionBusy(participant.identity);
+
+            void (async () => {
+                try {
+                    await postJson(routes.callParticipantPermission(classroom.id, participant.identity), {
+                        can_talk: allowed,
+                    });
+
+                    playCue(allowed ? 'join' : 'leave');
+                    toast.push({
+                        title: allowed
+                            ? `${participant.name} can talk now`
+                            : `${participant.name} was muted`,
+                        description: allowed
+                            ? 'Their microphone is open for this call only.'
+                            : 'They can raise a hand to ask again.',
+                        tone: 'info',
+                    });
+                } catch (error) {
+                    toast.push({
+                        title: 'That did not work',
+                        description: error instanceof ApiError ? error.message : 'Please try again.',
+                        tone: 'error',
+                    });
+                } finally {
+                    setPermissionBusy(null);
+                }
+            })();
+        },
+        [classroom.id, toast],
+    );
+
+    const toggleStudentDrawing = useCallback(
+        (student: RoomStudent): void => {
+            setDrawBusy(student.id);
+
+            void (async () => {
+                try {
+                    const result = await patchJson<{ can_draw: boolean }>(
+                        routes.instructor.studentDrawing(classroom.id, student.id),
+                        { can_draw: !student.can_draw },
+                    );
+
+                    const next = students.map((item) =>
+                        item.id === student.id ? { ...item, can_draw: result.can_draw } : item,
+                    );
+
+                    setStudents(next);
+                    board.shareDrawers(next.filter((item) => item.can_draw).map((item) => item.id));
+
+                    if (result.can_draw) {
+                        playCue('pen');
+                    }
+
+                    toast.push({
+                        title: result.can_draw ? `${student.name} can draw now` : `${student.name} can no longer draw`,
+                        tone: 'info',
+                    });
+                } catch (error) {
+                    toast.push({
+                        title: 'That did not work',
+                        description: error instanceof ApiError ? error.message : 'Please try again.',
+                        tone: 'error',
+                    });
+                } finally {
+                    setDrawBusy(null);
+                }
+            })();
+        },
+        [classroom.id, students, board, toast],
+    );
+
+    // -- keyboard ----------------------------------------------------------
+
+    useEffect(() => {
+        function onKey(event: KeyboardEvent): void {
+            if (event.metaKey || event.ctrlKey || event.altKey) {
+                return;
+            }
+
+            const target = event.target as HTMLElement | null;
+
+            if (target !== null && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) {
+                return;
+            }
+
+            if (event.key === 'Escape') {
+                setPanel(null);
+                setConfirm(null);
+
+                return;
+            }
+
+            if (!call.inCall) {
+                return;
+            }
+
+            switch (event.key.toLowerCase()) {
+                case 'm':
+                    void call.toggleMicrophone();
+                    break;
+                case 'b':
+                    setBoardOpen((current) => !current);
+                    break;
+                case 'h':
+                    toggleHand();
+                    break;
+                case 'p':
+                    setPanel((current) => (current === 'polls' ? null : 'polls'));
+                    break;
+                case 'r':
+                    if (call.canRecord) {
+                        void toggleRecording();
+                    }
+                    break;
+                default:
+                    break;
+            }
         }
 
-        await flushBoard();
-        await room?.disconnect();
-    }
+        window.addEventListener('keydown', onKey);
 
-    async function copyKey(): Promise<void> {
-        if (await copyText(classroom.join_code)) {
-            setCopied(true);
-            window.setTimeout(() => setCopied(false), 1600);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [call.inCall, call.canRecord, call.toggleMicrophone, toggleHand, toggleRecording]);
+
+    // -- notices -----------------------------------------------------------
+
+    const notices: Notice[] = [];
+
+    if (call.inCall) {
+        if (call.previewOnly) {
+            notices.push({
+                id: 'preview',
+                tone: 'info',
+                title: `${call.driver} preview`,
+                description: 'No call server is configured, so the board is shared with tabs on this device only.',
+            });
+        }
+
+        if (call.recording) {
+            notices.push({
+                id: 'recording',
+                tone: 'info',
+                title: 'Recording on this device',
+                description: 'Lesson audio and any shared screen are saved locally when you stop. Nothing is uploaded.',
+            });
+        }
+
+        if (call.reconnecting) {
+            notices.push({
+                id: 'reconnecting',
+                tone: 'warn',
+                title: 'Reconnecting…',
+                description: 'Your microphone and the board resume when the connection is back.',
+            });
+        }
+
+        if (call.audioBlocked) {
+            notices.push({
+                id: 'audio',
+                tone: 'warn',
+                title: 'Sound is blocked',
+                description: 'The browser held playback until you interact with the page.',
+                action: { label: 'Enable sound', onClick: () => void call.enableAudio() },
+            });
+        }
+
+        if (role === 'participant' && !canTalk) {
+            notices.push({
+                id: 'listen-only',
+                tone: 'info',
+                title: 'You are listening only',
+                description: handRaised
+                    ? 'Your hand is raised. The instructor can open your microphone.'
+                    : 'Raise your hand to ask the instructor to let you talk.',
+            });
+        }
+
+        if (!secureContext && realtime.secureUrl !== null) {
+            notices.push({
+                id: 'secure',
+                tone: 'warn',
+                title: 'This page is not on https',
+                description: 'The browser will not open a microphone here.',
+            });
+        }
+
+        if (call.notice !== null) {
+            notices.push({ id: 'notice', tone: 'info', title: call.notice });
+        }
+
+        if (sharing !== null && boardOpen) {
+            notices.push({
+                id: 'screen-share',
+                tone: 'info',
+                title: `${sharing.name} is sharing a screen`,
+                description: 'Hide the board to watch it.',
+                action: { label: 'Hide board', onClick: () => setBoardOpen(false) },
+            });
+        }
+
+        if (role === 'participant' && state.session === null) {
+            notices.push({
+                id: 'waiting',
+                tone: 'info',
+                title: 'Waiting for the instructor',
+                description: 'The board opens when they start the room.',
+            });
         }
     }
 
-    const participantCount = participants.length;
-    const canDraw = canEditBoard && (canManageBoard || board.studentsCanAnnotate);
+    const callControls = (
+        <CallControls
+            micEnabled={call.micEnabled}
+            canTalk={canTalk}
+            screenShareEnabled={call.screenShareEnabled}
+            canShareScreen={canShareScreen}
+            handRaised={handRaised}
+            boardOpen={boardOpen}
+            panel={panel}
+            audioBlocked={call.audioBlocked}
+            participantCount={call.participants.length}
+            commentCount={comments.length}
+            pollCount={polls.active === null ? 0 : 1}
+            recording={call.recording}
+            recordingSeconds={call.recordingSeconds}
+            canRecord={call.canRecord}
+            onToggleRecording={() => void toggleRecording()}
+            onToggleMic={() => void call.toggleMicrophone()}
+            onToggleScreenShare={toggleScreenShare}
+            onToggleHand={toggleHand}
+            onToggleBoard={toggleBoard}
+            onHideControls={fullscreenBoard ? () => setFullscreenControlsVisible(false) : undefined}
+            onPanel={setPanel}
+            onEnableAudio={() => void call.enableAudio()}
+            onLeave={() => void leave()}
+            onEndClass={role === 'host' ? endClass : undefined}
+        />
+    );
+
+    function renderSidePanel(): ReactNode {
+        if (!call.inCall) {
+            return null;
+        }
+
+        if (panel === 'people') {
+            return (
+                <PeoplePanel
+                    open
+                    participants={call.participants}
+                    hands={hands}
+                    students={students}
+                    canManage={canManageBoard}
+                    canManageAudio={canManageAudio}
+                    studentsCanAnnotate={state.studentsCanAnnotate}
+                    selectedDrawers={state.allowedDrawerIds.length}
+                    boardSurface={state.surface}
+                    drawBusy={drawBusy}
+                    kicking={kicking}
+                    permissionBusy={permissionBusy}
+                    mediaPath={call.mediaPath}
+                    onClose={() => setPanel(null)}
+                    onToggleStudents={board.toggleStudents}
+                    onToggleStudentDrawing={toggleStudentDrawing}
+                    onSetTalkPermission={setTalkPermission}
+                    onRemove={removeParticipant}
+                />
+            );
+        }
+
+        if (panel === 'comments') {
+            return (
+                <CommentsPanel
+                    open
+                    comments={comments}
+                    draft={draft}
+                    myName={call.name}
+                    onDraft={setDraft}
+                    onSend={sendComment}
+                    onClose={() => setPanel(null)}
+                />
+            );
+        }
+
+        if (panel === 'polls') {
+            return (
+                <PollsPanel
+                    open
+                    role={role}
+                    polls={polls.polls}
+                    active={polls.active}
+                    onClose={() => setPanel(null)}
+                    onCreate={async (input) => {
+                        await polls.create(input);
+                    }}
+                    onRespond={async (pollId, response) => {
+                        await polls.respond(pollId, response);
+                    }}
+                    onClosePoll={async (pollId) => {
+                        await polls.close(pollId);
+                    }}
+                    onRefresh={polls.refresh}
+                />
+            );
+        }
+
+        return null;
+    }
+
+    const sidePanel = renderSidePanel();
+
+    const handsUp = [...hands].filter((identity) => identity !== call.identity).length;
 
     return (
         <>
             <Head title={`${classroom.name} · Live call`} />
 
             <div className="call-shell">
-                <header className="flex h-14 shrink-0 items-center gap-3 border-b border-stage-line px-3 sm:px-4">
-                    <Link
-                        href={backUrl}
-                        className="call-control h-9 min-w-9 px-2"
-                        aria-label="Leave this view"
-                        title="Back to the class list"
-                    >
-                        <ArrowLeft size={17} aria-hidden="true" />
-                    </Link>
-
-                    <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13px] font-medium text-white">{classroom.name}</p>
-                        <p className="truncate text-[11px] text-white/50">
-                            {[classroom.course, classroom.instructor].filter(Boolean).join(' · ') || 'Live class'}
-                        </p>
-                    </div>
-
-                    <button
-                        type="button"
-                        onClick={() => void copyKey()}
-                        className="call-control h-8 px-2.5 text-[11px]"
-                        title="Copy the class key"
-                    >
-                        <span className="font-mono tracking-[0.18em]">{classroom.join_code}</span>
-                        {copied ? <Check size={13} aria-hidden="true" /> : <Copy size={13} aria-hidden="true" />}
-                    </button>
-
-                    {inCall ? (
-                        <span className={cn('stage-chip hidden sm:inline-flex', reconnecting ? 'stage-chip-warn' : 'stage-chip-live')}>
-                            <span
-                                className={cn('h-1.5 w-1.5 rounded-full', reconnecting ? 'bg-[#ffd28a]' : 'bg-[#8ce8b0]')}
-                                aria-hidden="true"
-                            />
-                            {reconnecting ? 'Reconnecting' : 'Live'}
-                        </span>
-                    ) : null}
-
-                    <span className="hidden items-center gap-1.5 text-[11px] text-white/55 sm:flex">
-                        <Users size={14} aria-hidden="true" />
-                        {participantCount}
-                    </span>
-                </header>
+                <CallHeader
+                    name={classroom.name}
+                    course={classroom.course}
+                    instructor={classroom.instructor}
+                    joinCode={classroom.join_code}
+                    backUrl={backUrl}
+                    attendanceUrl={attendanceUrl}
+                    inCall={call.inCall}
+                    reconnecting={call.reconnecting}
+                    participantCount={call.participants.length}
+                    raisedHands={handsUp}
+                    soundMuted={!soundOn}
+                    copied={copied}
+                    recording={call.recording}
+                    recordingSeconds={call.recordingSeconds}
+                    onToggleSound={toggleSound}
+                    onCopyKey={() => void copyKey()}
+                    onShowHands={() => setPanel('people')}
+                />
 
                 <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-                    <main className="flex min-h-0 flex-1 flex-col">
-                        {notice || error || !configured ? (
-                            <div className="flex flex-col gap-1.5 px-3 pt-3 sm:px-4">
-                                {!configured ? (
-                                    <p className="flex items-start gap-2 rounded-xl border border-warn/30 bg-warn/10 px-3 py-2 text-xs text-warn">
-                                        <Info size={14} className="mt-px shrink-0" aria-hidden="true" />
-                                        Live calls are not configured on this server. Set LIVEKIT_URL,
-                                        LIVEKIT_API_KEY and LIVEKIT_API_SECRET, then reload.
-                                    </p>
-                                ) : null}
-                                {error ? (
-                                    <p className="rounded-xl border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-[#ffb4ab]" role="alert">
-                                        {error}
-                                    </p>
-                                ) : null}
-                                {notice ? (
-                                    <p className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs text-white/70" role="status">
-                                        {notice}
-                                    </p>
-                                ) : null}
-                            </div>
-                        ) : null}
-
-                        {inCall ? (
-                            <div className="flex min-h-0 flex-1 flex-col gap-2.5 p-3 sm:p-4">
+                    <main className="call-main">
+                        {call.inCall ? (
+                            <>
                                 {boardOpen ? (
-                                    <div className="flex min-h-0 flex-1 flex-col gap-2.5 lg:flex-row">
-                                        <div className="flex min-h-0 flex-1 flex-col gap-2.5">
-                                            <BoardToolbar
-                                                surface={board.surface}
-                                                page={board.page}
-                                                pages={board.pages}
-                                                canManage={canManageBoard}
-                                                canDraw={canDraw}
-                                                hasDocument={board.document !== null}
-                                                uploading={uploading}
-                                                tool={tool}
-                                                color={color}
-                                                width={width}
-                                                studentsCanAnnotate={board.studentsCanAnnotate}
-                                                onSurface={handleSurface}
-                                                onPage={handlePage}
-                                                onUpload={(file) => void uploadPdf(file)}
-                                                onClear={handleClear}
-                                                onTool={setTool}
-                                                onColor={setColor}
-                                                onWidth={setWidth}
-                                                onToggleStudents={handleToggleStudents}
-                                            />
-                                            <div className="min-h-[280px] flex-1 lg:min-h-0">
-                                                <BoardStage
-                                                    surface={board.surface}
-                                                    documentUrl={board.document?.url ?? null}
-                                                    page={board.page}
-                                                    strokes={board.strokes}
-                                                    canDraw={canDraw}
-                                                    tool={tool}
-                                                    color={color}
-                                                    width={width}
-                                                    onStroke={handleStroke}
-                                                    onPageCount={handlePageCount}
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="flex shrink-0 gap-2 overflow-x-auto pb-1 lg:w-[190px] lg:flex-col lg:overflow-x-hidden lg:overflow-y-auto lg:pb-0">
-                                            {participants.map((participant) => (
-                                                <ParticipantTile key={participant.identity} participant={participant} layout="strip" />
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <BoardWorkspace
+                                        board={board}
+                                        presence={presence.frames}
+                                        now={presence.now}
+                                        canManage={canManageBoard}
+                                        live={call.session !== null}
+                                        participants={call.participants}
+                                        hands={hands}
+                                        onCursor={(point) => presence.update({ cursor: point })}
+                                        onNewRoom={() => void call.startFreshRoom()}
+                                        onFullscreenChange={handleFullscreenChange}
+                                        fullscreenControls={callControls}
+                                        fullscreenPanel={sidePanel ?? undefined}
+                                        showFullscreenControls={fullscreenControlsVisible}
+                                        onShowFullscreenControls={() => setFullscreenControlsVisible(true)}
+                                    />
                                 ) : (
-                                    <div className="flex min-h-0 flex-1 items-center justify-center">
-                                        <div className="grid w-full max-w-4xl grid-cols-2 gap-2.5 sm:grid-cols-3">
-                                            {participants.map((participant) => (
-                                                <ParticipantTile key={participant.identity} participant={participant} />
-                                            ))}
-                                        </div>
-                                    </div>
+                                    <CallStage
+                                        participants={call.participants}
+                                        hands={hands}
+                                        layout="grid"
+                                        onScreenShareSize={call.reportScreenShareSize}
+                                    />
                                 )}
 
-                                {audioTracks.map((track, index) => (
-                                    <RemoteAudio key={track.sid ?? `audio-${index}`} track={track} />
-                                ))}
-                            </div>
+                                <CallNotices notices={notices} />
+
+                                {fullscreenBoard ? null : callControls}
+                            </>
                         ) : (
-                            <div className="flex min-h-0 flex-1 items-center justify-center p-4">
-                                <div className="w-full max-w-md rounded-3xl border border-stage-line bg-stage-raised p-6">
-                                    <p className="text-[11px] font-semibold tracking-[0.14em] text-white/40 uppercase">
-                                        {role === 'host' ? 'You are the host' : 'Group call'}
-                                    </p>
-                                    <h1 className="mt-2 text-xl font-semibold text-white">{classroom.name}</h1>
-                                    <p className="mt-1 text-sm text-white/55">
-                                        {classroom.instructor ? `With ${classroom.instructor}` : 'Class group call'} · every
-                                        participant shares one microphone room and one board.
-                                    </p>
-
-                                    <div className="mt-5 flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-3 py-2.5">
-                                        <span className="text-[11px] text-white/45">Class key</span>
-                                        <span className="ml-auto font-mono text-sm font-semibold tracking-[0.2em] text-white">
-                                            {classroom.join_code}
-                                        </span>
-                                    </div>
-
-                                    {!secureContext ? (
-                                        <p className="mt-3 flex items-start gap-2 rounded-xl border border-warn/30 bg-warn/10 px-3 py-2 text-[11px] text-warn">
-                                            <Info size={13} className="mt-px shrink-0" aria-hidden="true" />
-                                            Open this page over HTTPS (or a trusted origin) to use the microphone. The board
-                                            still works.
-                                        </p>
-                                    ) : null}
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void joinCall()}
-                                        disabled={!configured || joining}
-                                        className="btn btn-primary mt-5 w-full py-3"
-                                    >
-                                        <Microphone size={17} weight="duotone" aria-hidden="true" />
-                                        {joining ? 'Joining…' : status === 'disconnected' ? 'Rejoin call' : 'Join call'}
-                                    </button>
-
-                                    {joining && phase !== null ? (
-                                        <p className="mt-3 flex items-center justify-center gap-2 text-[11px] text-white/55">
-                                            <Spinner size={13} className="motion-safe:animate-spin" aria-hidden="true" />
-                                            {joinPhaseLabel[phase]}
-                                        </p>
-                                    ) : (
-                                        <p className="mt-3 text-center text-[11px] text-white/40">
-                                            Your microphone stays off until you allow it.
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
+                            <CallLobby
+                                classroom={classroom}
+                                role={role}
+                                driver={call.driver}
+                                previewOnly={call.previewOnly}
+                                secureContext={secureContext}
+                                secureUrl={realtime.secureUrl}
+                                joining={call.joining}
+                                phase={call.phase}
+                                error={call.error}
+                                notice={call.notice}
+                                doctor={call.doctor}
+                                doctorBusy={call.doctorBusy}
+                                onJoin={() => void call.join()}
+                                onRunDoctor={() => void call.runDoctor()}
+                            />
                         )}
-
-                        {inCall ? (
-                            <div className="shrink-0 px-3 pb-4 sm:px-4">
-                                {audioBlocked && audioTracks.length > 0 ? (
-                                    <div className="mb-2 flex justify-center">
-                                        <button
-                                            type="button"
-                                            onClick={() => void enableAudio()}
-                                            className="rounded-full bg-white px-3 py-1.5 text-[12px] font-semibold text-stage"
-                                        >
-                                            Click to enable sound
-                                        </button>
-                                    </div>
-                                ) : null}
-
-                                <div className="callbar mx-auto w-fit">
-                                    <button
-                                        type="button"
-                                        onClick={() => void toggleMicrophone()}
-                                        className={cn('call-control', micEnabled ? 'call-control-live' : 'call-control-on')}
-                                        aria-pressed={micEnabled}
-                                        title={micEnabled ? 'Mute microphone' : 'Unmute microphone'}
-                                    >
-                                        {micEnabled ? (
-                                            <Microphone size={17} weight="fill" aria-hidden="true" />
-                                        ) : (
-                                            <MicrophoneSlash size={17} aria-hidden="true" />
-                                        )}
-                                        <span className="hidden sm:inline">{micEnabled ? 'Mute' : 'Unmute'}</span>
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => setBoardOpen((open) => !open)}
-                                        className={cn('call-control', boardOpen && 'call-control-on')}
-                                        aria-pressed={boardOpen}
-                                        title="Show or hide the shared board"
-                                    >
-                                        <SquaresFour size={17} weight={boardOpen ? 'fill' : 'regular'} aria-hidden="true" />
-                                        <span className="hidden sm:inline">{boardOpen ? 'Hide board' : 'Present'}</span>
-                                    </button>
-
-                                    {canManageBoard ? (
-                                        <button
-                                            type="button"
-                                            onClick={handleToggleStudents}
-                                            className={cn('call-control', board.studentsCanAnnotate && 'call-control-live')}
-                                            aria-pressed={board.studentsCanAnnotate}
-                                            title="Let students draw on the board"
-                                        >
-                                            <HandPalm
-                                                size={17}
-                                                weight={board.studentsCanAnnotate ? 'fill' : 'regular'}
-                                                aria-hidden="true"
-                                            />
-                                            <span className="hidden sm:inline">
-                                                {board.studentsCanAnnotate ? 'Students can draw' : 'Hand over pen'}
-                                            </span>
-                                        </button>
-                                    ) : null}
-
-                                    <button
-                                        type="button"
-                                        onClick={() => setPanel((current) => (current === 'people' ? 'none' : 'people'))}
-                                        className={cn('call-control', panel === 'people' && 'call-control-on')}
-                                        aria-pressed={panel === 'people'}
-                                        title="Participants"
-                                    >
-                                        <Users size={17} aria-hidden="true" />
-                                        <span className="tabular">{participantCount}</span>
-                                    </button>
-
-                                    <button
-                                        type="button"
-                                        onClick={() => void leaveCall()}
-                                        className="call-control call-control-danger px-4"
-                                        title="Leave the call"
-                                    >
-                                        <PhoneDisconnect size={17} weight="fill" aria-hidden="true" />
-                                        <span className="hidden sm:inline">Leave</span>
-                                    </button>
-                                </div>
-                            </div>
-                        ) : null}
                     </main>
 
-                    {panel === 'people' ? (
-                        <aside className="call-panel" aria-label="Participants">
-                            <div className="flex items-center justify-between border-b border-stage-line px-3 py-2.5">
-                                <p className="text-[12px] font-semibold text-white">
-                                    Participants{' '}
-                                    <span className="font-normal text-white/45">
-                                        {pluralize(Math.max(participantCount, 1), 'person', 'people')}
-                                    </span>
-                                </p>
-                                <button
-                                    type="button"
-                                    onClick={() => setPanel('none')}
-                                    className="call-control h-7 min-w-7 px-1"
-                                    aria-label="Close participants"
-                                >
-                                    <X size={14} aria-hidden="true" />
-                                </button>
-                            </div>
-
-                            <ul className="flex-1 space-y-1 overflow-y-auto p-2">
-                                {(participants.length > 0 ? participants : [{ identity: 'you', name: 'You', isLocal: true, isSpeaking: false, micEnabled, role }]).map(
-                                    (participant) => (
-                                        <li key={participant.identity} className="call-panel-item">
-                                            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white/10 text-[10px] font-semibold text-white/80">
-                                                {participant.name.slice(0, 2).toUpperCase()}
-                                            </span>
-                                            <span className="min-w-0 flex-1 truncate">
-                                                {participant.name}
-                                                {participant.isLocal ? ' (you)' : ''}
-                                            </span>
-                                            {participant.role === 'host' ? (
-                                                <span className="rounded-full bg-brand/80 px-1.5 py-0.5 text-[9px] font-semibold text-white">
-                                                    HOST
-                                                </span>
-                                            ) : null}
-                                            {participant.micEnabled ? (
-                                                <Microphone size={13} className="text-white/45" aria-label="Unmuted" />
-                                            ) : (
-                                                <MicrophoneSlash size={13} className="text-white/30" aria-label="Muted" />
-                                            )}
-                                        </li>
-                                    ),
-                                )}
-                            </ul>
-
-                            <div className="border-t border-stage-line p-3 text-[11px] leading-relaxed text-white/45">
-                                Board: <span className="text-white/70">{surfaceLabel[board.surface]}</span>
-                                {board.studentsCanAnnotate ? ' · students may draw' : ' · view only for students'}
-                            </div>
-                        </aside>
-                    ) : null}
+                    {fullscreenBoard ? null : sidePanel}
                 </div>
             </div>
+
+            <ConfirmDialog request={confirm} onClose={() => setConfirm(null)} />
         </>
     );
-}
-
-function RemoteAudio({ track }: { track: RemoteAudioTrack }) {
-    const ref = useRef<HTMLAudioElement | null>(null);
-
-    useEffect(() => {
-        const element = ref.current;
-
-        if (element === null) {
-            return;
-        }
-
-        track.attach(element);
-
-        return () => {
-            track.detach(element);
-        };
-    }, [track]);
-
-    return <audio ref={ref} autoPlay playsInline className="hidden" />;
-}
-
-async function requestToken(url: string, session: string): Promise<TokenPayload> {
-    const response = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'X-CSRF-TOKEN': csrfToken(),
-        },
-        body: JSON.stringify({ session }),
-    });
-
-    if (!response.ok) {
-        throw new Error(await responseError(response));
-    }
-
-    const payload = (await response.json()) as { data: TokenPayload };
-
-    return payload.data;
-}
-
-async function responseError(response: Response): Promise<string> {
-    try {
-        const body = (await response.json()) as { message?: string; errors?: Record<string, string[]> };
-        const first = body.errors ? Object.values(body.errors)[0]?.[0] : undefined;
-
-        return first ?? body.message ?? `Could not join the call (${response.status}).`;
-    } catch {
-        return `Could not join the call (${response.status}).`;
-    }
 }

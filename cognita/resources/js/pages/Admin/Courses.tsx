@@ -32,7 +32,7 @@ export default function AdminCourses({ courses }: AdminCoursesProps) {
                 {courses.length === 0 ? (
                     <EmptyState title="No courses yet" body="Instructors create courses from their own console." />
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="table-wrap">
                         <table className="table">
                             <thead>
                                 <tr>

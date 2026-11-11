@@ -13,7 +13,7 @@ use Illuminate\Database\Seeder;
 
 /**
  * One teaching example: a course, a class with a memorable key, two students
- * inside it, and a board that starts on the notebook surface.
+ * inside it, and a board that starts on the blank canvas.
  *
  * Idempotent: the course and the class are matched on their stable names, so
  * the seeded class key survives a re-run.
@@ -55,8 +55,8 @@ class DemoClassroomSeeder extends Seeder
         ClassBoard::query()->updateOrCreate(
             ['classroom_id' => $classroom->getKey()],
             [
-                'surface' => 'notebook',
-                'title' => 'Notebook',
+                'surface' => 'canvas',
+                'title' => 'Canvas',
                 'students_can_annotate' => true,
             ],
         );

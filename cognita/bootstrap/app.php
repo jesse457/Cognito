@@ -23,6 +23,24 @@ return Application::configure(basePath: dirname(__DIR__))
         // Inertia shares the signed-in actor and one-shot flash messages with
         // every page.
         $middleware->web(append: [HandleInertiaRequests::class]);
+
+        // .dev/lan-forward serves the app over HTTPS so a phone on the LAN gets a
+        // secure origin (no secure origin, no microphone). Without this the app
+        // reads the proxy's plain-HTTP hop and hands the browser http:// asset
+        // and WebSocket URLs on an https page, which the browser then refuses.
+        // Trusting the private ranges keeps a spoofed header from a public
+        // client out of the forwarded values.
+        $middleware->trustProxies(at: [
+            '127.0.0.1',
+            '::1',
+            '10.0.0.0/8',
+            '172.16.0.0/12',
+            '192.168.0.0/16',
+        ], headers: Request::HEADER_X_FORWARDED_FOR
+            | Request::HEADER_X_FORWARDED_HOST
+            | Request::HEADER_X_FORWARDED_PORT
+            | Request::HEADER_X_FORWARDED_PROTO
+            | Request::HEADER_X_FORWARDED_PREFIX);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

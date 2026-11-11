@@ -27,59 +27,98 @@ class BoardTest extends TestCase
 
     public function test_the_instructor_switches_the_surface_and_the_page(): void
     {
+        Storage::fake('local');
+
+        $instructor = User::factory()->instructor()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+
+        $this->actingAs($instructor)->postJson("/classes/{$classroom->id}/board/document", [
+            'document' => UploadedFile::fake()->createWithContent('deck.pdf', '%PDF-1.4 deck'),
+        ])->assertOk();
+
+        $this->actingAs($instructor)
+            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'pdf', 'pages' => 8, 'page' => 3])
+            ->assertOk()
+            ->assertJsonPath('data.surface', 'pdf')
+            ->assertJsonPath('data.page', 3)
+            ->assertJsonPath('data.pages', 8);
+
+        $board = $classroom->board->fresh();
+
+        $this->assertSame('pdf', $board->surface->value);
+        $this->assertSame(3, $board->page);
+    }
+
+    public function test_the_pdf_page_survives_a_trip_through_the_canvas(): void
+    {
+        Storage::fake('local');
+
+        $instructor = User::factory()->instructor()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+
+        $this->actingAs($instructor)->postJson("/classes/{$classroom->id}/board/document", [
+            'document' => UploadedFile::fake()->createWithContent('deck.pdf', '%PDF-1.4 deck'),
+        ])->assertOk();
+
+        $this->actingAs($instructor)
+            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'pdf', 'pages' => 8, 'page' => 5])
+            ->assertOk()
+            ->assertJsonPath('data.page', 5);
+
+        // The canvas holds one page, but the deck under it does not move.
+        $this->actingAs($instructor)
+            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'canvas', 'page' => 1])
+            ->assertOk()
+            ->assertJsonPath('data.surface', 'canvas')
+            ->assertJsonPath('data.page', 1)
+            ->assertJsonPath('data.pages', 1)
+            ->assertJsonPath('data.pdfPage', 5);
+
+        $this->assertSame(5, $classroom->board->fresh()->page);
+
+        $this->actingAs($instructor)
+            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'pdf'])
+            ->assertOk()
+            ->assertJsonPath('data.surface', 'pdf')
+            ->assertJsonPath('data.page', 5)
+            ->assertJsonPath('data.pages', 8);
+    }
+
+    public function test_the_canvas_is_the_other_surface_and_holds_one_page(): void
+    {
         $instructor = User::factory()->instructor()->create();
         $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
 
         $this->actingAs($instructor)
-            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'notebook', 'page' => 2])
+            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'canvas', 'page' => 4])
             ->assertOk()
-            ->assertJsonPath('data.surface', 'notebook')
-            ->assertJsonPath('data.page', 2);
+            ->assertJsonPath('data.surface', 'canvas')
+            ->assertJsonPath('data.pages', 1)
+            ->assertJsonPath('data.page', 1);
 
-        $this->assertSame('notebook', $classroom->board->fresh()->surface->value);
-    }
-
-    public function test_students_cannot_change_the_surface(): void
-    {
-        $student = User::factory()->student()->create();
-        $classroom = Classroom::factory()->create();
-        $this->member($student, $classroom);
-
-        $classroom->board->update(['students_can_annotate' => true]);
-
-        $this->actingAs($student)
+        $this->actingAs($instructor)
             ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'notebook'])
-            ->assertForbidden();
+            ->assertStatus(422);
     }
 
-    public function test_students_can_send_strokes_only_when_the_instructor_allows_it(): void
+    public function test_students_cannot_change_the_board(): void
     {
         $student = User::factory()->student()->create();
         $classroom = Classroom::factory()->create();
         $this->member($student, $classroom);
 
-        $strokes = [[
-            'id' => 1,
-            'tool' => 'pen',
-            'color' => '#0b57d0',
-            'width' => 0.004,
-            'page' => 1,
-            'points' => [[0.1, 0.1], [0.2, 0.25]],
-        ]];
-
-        $this->actingAs($student)
-            ->patchJson("/classes/{$classroom->id}/board", ['strokes' => $strokes])
-            ->assertForbidden();
-
         $classroom->board->update(['students_can_annotate' => true]);
 
         $this->actingAs($student)
-            ->patchJson("/classes/{$classroom->id}/board", ['strokes' => $strokes])
-            ->assertOk()
-            ->assertJsonPath('data.strokes.0.points.1.0', 0.2);
+            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'canvas'])
+            ->assertForbidden();
+
+        $this->actingAs($student)
+            ->patchJson("/classes/{$classroom->id}/board", ['students_can_annotate' => true])
+            ->assertForbidden();
     }
 
-    public function test_strokes_are_clamped_and_invalid_tools_dropped(): void
+    public function test_the_server_refuses_to_store_drawings(): void
     {
         $instructor = User::factory()->instructor()->create();
         $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
@@ -87,18 +126,30 @@ class BoardTest extends TestCase
         $this->actingAs($instructor)
             ->patchJson("/classes/{$classroom->id}/board", [
                 'strokes' => [
-                    ['tool' => 'spray', 'color' => '#0b57d0', 'width' => 0.01, 'page' => 1, 'points' => [[0, 0]]],
-                    ['tool' => 'pen', 'color' => 'javascript:alert(1)', 'width' => 9, 'page' => 1, 'points' => [[-1, 2]]],
+                    ['id' => 1, 'tool' => 'pen', 'color' => '#0b57d0', 'width' => 0.004, 'page' => 1, 'points' => [[0.1, 0.1], [0.2, 0.25]]],
                 ],
             ])
-            ->assertOk();
+            ->assertStatus(422)
+            ->assertJsonPath('message', 'Drawings live in the room only. The board saves its surface, page and permissions.');
 
-        $strokes = $classroom->board->fresh()->strokes;
+        // Nothing about that request reached a table: no room was created and
+        // the board itself is untouched.
+        $this->assertDatabaseCount('call_sessions', 0);
+        $this->assertDatabaseMissing('call_sessions', ['classroom_id' => $classroom->id]);
+    }
 
-        $this->assertCount(1, $strokes);
-        $this->assertSame('#111827', $strokes[0]['color']);
-        $this->assertSame(0.05, $strokes[0]['width']);
-        $this->assertEquals([[0.0, 1.0]], $strokes[0]['points']);
+    public function test_the_board_state_never_carries_ink(): void
+    {
+        $instructor = User::factory()->instructor()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+
+        $state = $this->actingAs($instructor)
+            ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'canvas'])
+            ->assertOk()
+            ->json('data');
+
+        $this->assertSame([], $state['strokes']);
+        $this->assertNull($state['session']);
     }
 
     public function test_only_the_instructor_can_upload_a_pdf(): void
@@ -126,6 +177,111 @@ class BoardTest extends TestCase
         $this->assertSame('pdf', $board->surface->value);
         $this->assertSame('lecture.pdf', $board->document_name);
         Storage::disk('local')->assertExists($board->document_path);
+    }
+
+    public function test_uploaded_pdfs_stay_in_the_class_library_and_can_be_selected_again(): void
+    {
+        Storage::fake('local');
+
+        $instructor = User::factory()->instructor()->create();
+        $student = User::factory()->student()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+        $this->member($student, $classroom);
+
+        $this->actingAs($instructor)->postJson("/classes/{$classroom->id}/board/document", [
+            'document' => UploadedFile::fake()->createWithContent('first.pdf', '%PDF-1.4 first deck'),
+        ])->assertOk()->assertJsonPath('data.document.name', 'first.pdf');
+
+        $this->actingAs($instructor)->postJson("/classes/{$classroom->id}/board/document", [
+            'document' => UploadedFile::fake()->createWithContent('second.pdf', '%PDF-1.4 second deck'),
+        ])->assertOk()->assertJsonPath('data.document.name', 'second.pdf');
+
+        $this->assertDatabaseCount('class_documents', 2);
+
+        $first = $classroom->documents()->where('name', 'first.pdf')->firstOrFail();
+        $second = $classroom->documents()->where('name', 'second.pdf')->firstOrFail();
+
+        Storage::disk('local')->assertExists($first->path);
+        Storage::disk('local')->assertExists($second->path);
+
+        // The newer deck is on the board, but the first one was not deleted.
+        $this->assertSame($second->id, $classroom->board->fresh()->document_id);
+
+        $this->actingAs($instructor)
+            ->postJson("/classes/{$classroom->id}/board/documents/{$first->id}/present")
+            ->assertOk()
+            ->assertJsonPath('data.surface', 'pdf')
+            ->assertJsonPath('data.document.name', 'first.pdf');
+
+        $this->assertSame($first->id, $classroom->board->fresh()->document_id);
+
+        // Students can reuse the stream but cannot change which PDF is shown.
+        $this->actingAs($student)
+            ->postJson("/classes/{$classroom->id}/board/documents/{$second->id}/present")
+            ->assertForbidden();
+    }
+
+    public function test_a_stored_pdf_streams_with_range_and_cache_validators(): void
+    {
+        Storage::fake('local');
+
+        $instructor = User::factory()->instructor()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+        $student = User::factory()->student()->create();
+        $this->member($student, $classroom);
+
+        $this->actingAs($instructor)->postJson("/classes/{$classroom->id}/board/document", [
+            'document' => UploadedFile::fake()->createWithContent('deck.pdf', '%PDF-1.4 stream me'),
+        ])->assertOk();
+
+        $document = $classroom->documents()->firstOrFail();
+        $url = "/classes/{$classroom->id}/board/documents/{$document->id}";
+
+        $response = $this->actingAs($student)->get($url);
+
+        $response->assertOk()->assertHeader('Content-Type', 'application/pdf');
+        $this->assertStringContainsString('private', (string) $response->headers->get('Cache-Control'));
+        $this->assertStringContainsString('max-age=2592000', (string) $response->headers->get('Cache-Control'));
+
+        $etag = (string) $response->headers->get('ETag');
+
+        $this->assertNotSame('', $etag);
+
+        $this->actingAs($student)
+            ->withHeader('If-None-Match', $etag)
+            ->get($url)
+            ->assertStatus(304);
+
+        $this->flushHeaders();
+
+        $this->actingAs($student)
+            ->withHeader('Range', 'bytes=0-3')
+            ->get($url)
+            ->assertStatus(206)
+            ->assertHeader('Content-Type', 'application/pdf');
+    }
+
+    public function test_a_document_from_another_class_cannot_be_selected_or_streamed(): void
+    {
+        Storage::fake('local');
+
+        $instructor = User::factory()->instructor()->create();
+        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+        $otherClassroom = Classroom::factory()->create(['instructor_id' => $instructor->id]);
+
+        $this->actingAs($instructor)->postJson("/classes/{$otherClassroom->id}/board/document", [
+            'document' => UploadedFile::fake()->createWithContent('other.pdf', '%PDF-1.4 other deck'),
+        ])->assertOk();
+
+        $document = $otherClassroom->documents()->firstOrFail();
+
+        $this->actingAs($instructor)
+            ->postJson("/classes/{$classroom->id}/board/documents/{$document->id}/present")
+            ->assertNotFound();
+
+        $this->actingAs($instructor)
+            ->get("/classes/{$classroom->id}/board/documents/{$document->id}")
+            ->assertNotFound();
     }
 
     public function test_the_document_streams_to_members_only(): void

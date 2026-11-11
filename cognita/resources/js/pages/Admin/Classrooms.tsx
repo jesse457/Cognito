@@ -35,7 +35,7 @@ export default function AdminClassrooms({ classrooms }: AdminClassroomsProps) {
                 {classrooms.length === 0 ? (
                     <EmptyState title="No classes yet" body="Instructors create classes from their own console." />
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="table-wrap">
                         <table className="table">
                             <thead>
                                 <tr>

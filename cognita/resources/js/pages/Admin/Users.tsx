@@ -6,6 +6,7 @@ import Avatar from '@/components/ui/Avatar';
 import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import Pagination from '@/components/ui/Pagination';
+import Select from '@/components/ui/Select';
 import { routes } from '@/lib/routes';
 import { cn } from '@/lib/utils';
 import type { Paginated } from '@/types';
@@ -88,7 +89,7 @@ export default function AdminUsers({ users, filters }: UsersProps) {
                                 type="button"
                                 onClick={() => setRole(option.value)}
                                 className={cn(
-                                    'rounded-full px-3 py-1.5 text-xs font-medium transition',
+                                    'rounded-full px-3 py-2 text-xs font-medium transition',
                                     filters.role === option.value
                                         ? 'bg-surface text-ink shadow-[0_1px_2px_rgba(25,28,32,0.08)]'
                                         : 'text-ink-muted hover:text-ink',
@@ -104,7 +105,7 @@ export default function AdminUsers({ users, filters }: UsersProps) {
                 {users.data.length === 0 ? (
                     <EmptyState title="No accounts match" body="Try a different search term or clear the role filter." />
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className="table-wrap">
                         <table className="table">
                             <thead>
                                 <tr>
@@ -135,22 +136,24 @@ export default function AdminUsers({ users, filters }: UsersProps) {
                                                           ? 'Instructor'
                                                           : 'Student'}
                                                 </span>
-                                                <select
+                                                <Select
                                                     value={user.role}
-                                                    onChange={(event) =>
+                                                    onChange={(role) =>
                                                         router.patch(
                                                             routes.admin.userRole(user.id),
-                                                            { role: event.target.value },
+                                                            { role },
                                                             { preserveScroll: true },
                                                         )
                                                     }
-                                                    className="input w-auto py-1 pr-8 text-xs"
-                                                    aria-label={`Change role for ${user.name}`}
-                                                >
-                                                    <option value="student">Student</option>
-                                                    <option value="instructor">Instructor</option>
-                                                    <option value="admin">Admin</option>
-                                                </select>
+                                                    options={[
+                                                        { value: 'student', label: 'Student' },
+                                                        { value: 'instructor', label: 'Instructor' },
+                                                        { value: 'admin', label: 'Admin' },
+                                                    ]}
+                                                    size="sm"
+                                                    className="w-auto"
+                                                    ariaLabel={`Change role for ${user.name}. Current role: ${user.role}.`}
+                                                />
                                             </div>
                                         </td>
                                         <td className="td tabular">{user.created_at ?? '—'}</td>

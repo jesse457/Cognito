@@ -34,10 +34,15 @@
         <env name="MAIL_MAILER" value="array"/>
         <env name="QUEUE_CONNECTION" value="sync"/>
         <env name="SESSION_DRIVER" value="array"/>
+        <env name="CALL_SEATS_ENFORCE" value="false"/>
         <env name="FILESYSTEM_DISK" value="local"/>
+        <env name="BOARDS_DISK" value="local" force="true"/>
         <env name="LIVEKIT_URL" value="ws://livekit.test" force="true"/>
         <env name="LIVEKIT_API_KEY" value="test-key" force="true"/>
         <env name="LIVEKIT_API_SECRET" value="test-secret" force="true"/>
         <env name="LIVEKIT_TOKEN_TTL" value="3600" force="true"/>
+        <env name="EMBEDDINGS_PROVIDER" value="" force="true"/>
+        <env name="EMBEDDINGS_URL" value="" force="true"/>
+        <env name="EMBEDDINGS_DIMENSIONS" value="768" force="true"/>
     </php>
 </phpunit>

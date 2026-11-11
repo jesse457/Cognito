@@ -3,6 +3,7 @@ import { SignOut } from '@phosphor-icons/react';
 import type { ReactNode } from 'react';
 import Flash from '@/components/ui/Flash';
 import Avatar from '@/components/ui/Avatar';
+import ThemeToggle from '@/components/ui/ThemeToggle';
 import { routes } from '@/lib/routes';
 import { cn } from '@/lib/utils';
 import type { AuthUser, SharedProps } from '@/types';
@@ -48,7 +49,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         <div className="flex min-h-[100dvh] flex-col bg-canvas">
             <a
                 href="#main"
-                className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:text-white"
+                className="sr-only focus:not-sr-only focus:absolute focus:top-3 focus:left-3 focus:z-50 focus:rounded-full focus:bg-brand focus:px-4 focus:py-2 focus:text-sm focus:text-brand-ink"
             >
                 Skip to content
             </a>
@@ -80,6 +81,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
                 {user ? (
                     <div className="flex items-center gap-2">
+                        <ThemeToggle />
                         <div className="hidden items-center gap-2.5 border-l border-line pl-3 sm:flex">
                             <Avatar name={user.name} />
                             <div className="leading-tight">
@@ -98,9 +100,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
                         </button>
                     </div>
                 ) : (
-                    <Link href={routes.login} className="btn btn-primary btn-sm">
-                        Sign in
-                    </Link>
+                    <div className="flex items-center gap-2">
+                        <ThemeToggle />
+                        <Link href={routes.login} className="btn btn-primary btn-sm">
+                            Sign in
+                        </Link>
+                    </div>
                 )}
             </header>
 

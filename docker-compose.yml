@@ -29,10 +29,44 @@ services:
       timeout: 5s
       retries: 20
 
+  # Board documents (PDFs) live in object storage, not on the app disk.
+  # S3-compatible MinIO so the exact `s3` filesystem driver runs locally.
+  minio:
+    image: minio/minio:latest
+    container_name: cognita-minio
+    command: server /data --console-address ":9001"
+    environment:
+      # Must match AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY in cognita/.env.
+      MINIO_ROOT_USER: cognita
+      MINIO_ROOT_PASSWORD: cognita-minio-secret
+    ports:
+      - "9000:9000" # S3 API
+      - "9001:9001" # Console UI
+    volumes:
+      - cognita_minio:/data
+    restart: unless-stopped
+
+  # One-shot bucket bootstrap: idempotent, runs on every `compose up`.
+  minio-mc:
+    image: minio/mc:latest
+    container_name: cognita-minio-mc
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set local --api S3v4 http://minio:9000 cognita cognita-minio-secret) do sleep 1; done;
+      mc mb --ignore-existing local/cognita"
+    restart: no
+
   livekit:
     image: livekit/livekit-server:v1.13
     container_name: cognita-livekit
-    command: --config /etc/livekit.yaml
+    # LIVEKIT_NODE_IP is optional. Leave it unset and LiveKit advertises whatever
+    # address its own interface has, which keeps working when this machine moves
+    # networks. Set it only when the container cannot see the address clients use.
+    command: >-
+      --config /etc/livekit.yaml
+      ${LIVEKIT_NODE_IP:+--node-ip ${LIVEKIT_NODE_IP}}
     environment:
       # Must match LIVEKIT_API_KEY / LIVEKIT_API_SECRET in cognita/.env.
       LIVEKIT_KEYS: "${LIVEKIT_API_KEY:-devkey}: ${LIVEKIT_API_SECRET:-cognita-dev-livekit-secret-8f3c2a1b}"
@@ -44,9 +78,13 @@ services:
       # and a phone on mobile data behind carrier NAT often cannot receive it
       # at all — test voice from the LAN or from the same machine.
       - "7882:7882/udp"
+      # TURN: NAT fallback for a client that cannot receive UDP directly, and
+      # the port .dev/livekit.sh probes to prove media really flows.
+      - "3478:3478/udp"
     volumes:
       - ./docker/livekit/livekit.yaml:/etc/livekit.yaml:ro
     restart: unless-stopped
 
 volumes:
   cognita_db:
+  cognita_minio:

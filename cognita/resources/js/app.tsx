@@ -1,6 +1,10 @@
 import { createInertiaApp } from '@inertiajs/react';
 import { createRoot } from 'react-dom/client';
+import { ToastProvider } from '@/components/ui/Toast';
+import { ThemeProvider } from '@/hooks/useTheme';
 import AppShell from '@/layouts/AppShell';
+import CommunityShell from '@/layouts/CommunityShell';
+import DashboardShell from '@/layouts/DashboardShell';
 import GuestShell from '@/layouts/GuestShell';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Cognita';
@@ -11,6 +15,12 @@ const barePages = ['LiveCall/Room'];
 /** Guest pages share the split brand/auth layout. */
 const guestPages = ['Welcome', 'Auth/SignIn', 'Auth/Register'];
 
+/** Instructor and student surfaces use the dashboard chrome with a sidebar. */
+const withDashboard = (page: React.ReactNode) => <DashboardShell>{page}</DashboardShell>;
+
+/** The community board is a top-bar forum, not another dashboard section. */
+const withCommunity = (page: React.ReactNode) => <CommunityShell>{page}</CommunityShell>;
+
 const shellFor = (name: string) => {
     if (barePages.includes(name)) {
         return (page: React.ReactNode) => page;
@@ -18,6 +28,14 @@ const shellFor = (name: string) => {
 
     if (guestPages.includes(name)) {
         return (page: React.ReactNode) => <GuestShell>{page}</GuestShell>;
+    }
+
+    if (name.startsWith('Instructor/') || name.startsWith('Student/')) {
+        return withDashboard;
+    }
+
+    if (name.startsWith('Questions/')) {
+        return withCommunity;
     }
 
     return (page: React.ReactNode) => <AppShell>{page}</AppShell>;
@@ -46,9 +64,16 @@ createInertiaApp({
         return page;
     },
     setup({ el, App, props }) {
-        createRoot(el).render(<App {...props} />);
+        // Theme and toasts sit above the page shell so any page can use them.
+        createRoot(el).render(
+            <ThemeProvider>
+                <ToastProvider>
+                    <App {...props} />
+                </ToastProvider>
+            </ThemeProvider>,
+        );
     },
     progress: {
-        color: '#0b57d0',
+        color: '#1e5b48',
     },
 });

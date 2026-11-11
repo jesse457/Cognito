@@ -22,6 +22,7 @@ class Enrollment extends Model
         'classroom_id',
         'student_id',
         'joined_at',
+        'can_draw',
     ];
 
     /**
@@ -31,6 +32,7 @@ class Enrollment extends Model
     {
         return [
             'joined_at' => 'datetime',
+            'can_draw' => 'boolean',
         ];
     }
 

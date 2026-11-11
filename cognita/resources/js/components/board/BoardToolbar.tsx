@@ -1,21 +1,36 @@
 import {
+    ArrowClockwise,
+    ArrowCounterClockwise,
     ArrowLeft,
     ArrowRight,
+    ArrowUpRight,
     ArrowsClockwise,
+    ArrowsIn,
+    ArrowsOut,
+    Circle,
+    Crosshair,
+    Eraser,
     FilePdf,
+    Flashlight,
     HandPalm,
+    LineSegment,
     MarkerCircle,
-    Notebook,
+    Minus,
     PencilSimpleLine,
+    Plus,
+    Sparkle,
+    Square,
     SquaresFour,
-    Trash,
-    UploadSimple,
+    TextAa,
 } from '@phosphor-icons/react';
-import { useRef } from 'react';
-import type { BoardStroke, BoardSurface } from '@/types';
+import { useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import PdfLibrary from '@/components/board/PdfLibrary';
+import { ERASER_WIDTHS, INK_COLORS, INK_WIDTHS, SURFACE_LABEL, TOOLS, ZOOM } from '@/lib/board';
 import { cn } from '@/lib/utils';
+import type { BoardDocumentSummary, BoardSurface, BoardTool } from '@/types';
 
-export type BoardTool = BoardStroke['tool'];
+export type { BoardTool } from '@/types';
 
 interface BoardToolbarProps {
     surface: BoardSurface;
@@ -23,106 +38,135 @@ interface BoardToolbarProps {
     pages: number;
     canManage: boolean;
     canDraw: boolean;
+    canUndo: boolean;
+    canRedo: boolean;
     hasDocument: boolean;
+    documents: BoardDocumentSummary[];
     uploading: boolean;
     tool: BoardTool;
     color: string;
     width: number;
+    eraserWidth: number;
+    zoom: number;
     studentsCanAnnotate: boolean;
+    fullscreen: boolean;
     onSurface: (surface: BoardSurface) => void;
     onPage: (page: number) => void;
     onUpload: (file: File) => void;
+    onSelectDocument: (document: BoardDocumentSummary) => void;
     onClear: () => void;
     onTool: (tool: BoardTool) => void;
     onColor: (color: string) => void;
     onWidth: (width: number) => void;
+    onEraserWidth: (width: number) => void;
+    onZoom: (zoom: number) => void;
+    onUndo: () => void;
+    onRedo: () => void;
     onToggleStudents: () => void;
+    onToggleFullscreen: () => void;
+    /** Host only: clear the board into a new room. */
+    onNewRoom?: () => void;
 }
 
-const surfaces: Array<{ value: BoardSurface; label: string; icon: typeof Notebook }> = [
-    { value: 'canvas', label: 'Canvas', icon: SquaresFour },
-    { value: 'notebook', label: 'Notebook', icon: Notebook },
-    { value: 'pdf', label: 'PDF', icon: FilePdf },
-];
+const SURFACES: BoardSurface[] = ['canvas', 'pdf'];
 
-const tools: Array<{ value: BoardTool; label: string; icon: typeof Notebook }> = [
-    { value: 'pen', label: 'Pen', icon: PencilSimpleLine },
-    { value: 'marker', label: 'Highlighter', icon: MarkerCircle },
-    { value: 'eraser', label: 'Eraser', icon: Trash },
-];
+const SURFACE_ICON = { canvas: SquaresFour, pdf: FilePdf } as const;
 
-const colors = ['#191c20', '#0b57d0', '#1a7f3c', '#b3261e', '#9a6a00'];
-const widths = [0.0025, 0.005, 0.009];
+const TOOL_ICON = {
+    pen: PencilSimpleLine,
+    marker: MarkerCircle,
+    laser: Crosshair,
+    spotlight: Flashlight,
+    eraser: Eraser,
+    line: LineSegment,
+    arrow: ArrowUpRight,
+    rect: Square,
+    ellipse: Circle,
+    text: TextAa,
+} as const;
 
-export default function BoardToolbar({
-    surface,
-    page,
-    pages,
-    canManage,
-    canDraw,
-    hasDocument,
-    uploading,
-    tool,
-    color,
-    width,
-    studentsCanAnnotate,
-    onSurface,
-    onPage,
-    onUpload,
-    onClear,
-    onTool,
-    onColor,
-    onWidth,
-    onToggleStudents,
-}: BoardToolbarProps) {
-    const fileRef = useRef<HTMLInputElement | null>(null);
+/** Board controls, in two rows: what is on the sheet, then what draws on it. */
+export default function BoardToolbar(props: BoardToolbarProps) {
+    const {
+        surface,
+        page,
+        pages,
+        canManage,
+        canDraw,
+        canUndo,
+        canRedo,
+        hasDocument,
+        documents,
+        uploading,
+        tool,
+        color,
+        width,
+        eraserWidth,
+        zoom,
+        studentsCanAnnotate,
+        fullscreen,
+    } = props;
+
+    const fileInput = useRef<HTMLInputElement | null>(null);
+    const [libraryOpen, setLibraryOpen] = useState(false);
+
+    /** "PDF" means the deck that is already up; otherwise pick or upload one. */
+    function choosePdf(): void {
+        if (hasDocument) {
+            props.onSurface('pdf');
+
+            return;
+        }
+
+        if (documents.length > 0) {
+            setLibraryOpen(true);
+
+            return;
+        }
+
+        fileInput.current?.click();
+    }
 
     return (
-        <div className="rounded-2xl border border-stage-line bg-stage-raised/90 p-2">
+        <div className="board-toolbar">
             <div className="flex flex-wrap items-center gap-1.5">
                 {canManage ? (
-                    <div className="flex items-center gap-0.5 rounded-full bg-black/25 p-0.5" role="group" aria-label="Board surface">
-                        {surfaces.map((item) => (
-                            <button
-                                key={item.value}
-                                type="button"
-                                onClick={() => {
-                                    if (item.value === 'pdf' && !hasDocument) {
-                                        fileRef.current?.click();
-
-                                        return;
-                                    }
-
-                                    onSurface(item.value);
-                                }}
-                                className={cn(
-                                    'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-medium transition',
-                                    surface === item.value
-                                        ? 'bg-white text-stage'
-                                        : 'text-white/70 hover:bg-white/10 hover:text-white',
-                                )}
-                                aria-pressed={surface === item.value}
-                            >
-                                <item.icon size={15} aria-hidden="true" />
-                                {item.label}
-                            </button>
-                        ))}
-                    </div>
-                ) : null}
-
-                {canManage ? (
                     <>
-                        <button
-                            type="button"
-                            className="call-control h-9 min-w-9 px-2.5 text-[12px]"
-                            onClick={() => fileRef.current?.click()}
-                            title="Upload a PDF to present"
+                        <div
+                            className="flex items-center gap-0.5 rounded-full bg-stage-ink/5 p-0.5"
+                            role="group"
+                            aria-label="Board surface"
                         >
-                            <UploadSimple size={15} aria-hidden="true" />
-                            {uploading ? 'Uploading' : hasDocument ? 'Replace PDF' : 'Upload PDF'}
-                        </button>
+                            {SURFACES.map((value) => {
+                                const Icon = SURFACE_ICON[value];
+
+                                return (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        onClick={() => (value === 'pdf' ? choosePdf() : props.onSurface(value))}
+                                        className={cn('surface-tab', surface === value && 'surface-tab-active')}
+                                        aria-pressed={surface === value}
+                                    >
+                                        <Icon size={15} aria-hidden="true" />
+                                        <span className="hidden sm:inline">{SURFACE_LABEL[value]}</span>
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        <PdfLibrary
+                            open={libraryOpen}
+                            onOpenChange={setLibraryOpen}
+                            documents={documents}
+                            uploading={uploading}
+                            surface={surface}
+                            onSelect={props.onSelectDocument}
+                            onUpload={() => fileInput.current?.click()}
+                        />
+
                         <input
-                            ref={fileRef}
+                            ref={fileInput}
                             type="file"
                             accept="application/pdf"
                             className="hidden"
@@ -130,136 +174,272 @@ export default function BoardToolbar({
                                 const file = event.target.files?.[0];
 
                                 if (file) {
-                                    onUpload(file);
+                                    props.onUpload(file);
                                 }
 
                                 event.target.value = '';
                             }}
                         />
+                    </>
+                ) : null}
 
-                        <div className="ml-auto flex items-center gap-1">
-                            <button
-                                type="button"
-                                className="call-control h-9 min-w-9 px-2"
-                                onClick={() => onPage(Math.max(1, page - 1))}
+                <div className="ml-auto flex items-center gap-1">
+                    {canManage ? (
+                        <>
+                            <div className="flex items-center rounded-full bg-stage-ink/5">
+                                <ControlButton
+                                    label="Zoom out"
+                                    disabled={zoom <= ZOOM.min}
+                                    onClick={() => props.onZoom(zoom - ZOOM.step)}
+                                >
+                                    <Minus size={14} aria-hidden="true" />
+                                </ControlButton>
+                                <span className="min-w-[44px] text-center text-[11px] font-medium text-stage-ink/75 tabular">
+                                    {Math.round(zoom * 100)}%
+                                </span>
+                                <ControlButton
+                                    label="Zoom in"
+                                    disabled={zoom >= ZOOM.max}
+                                    onClick={() => props.onZoom(zoom + ZOOM.step)}
+                                >
+                                    <Plus size={14} aria-hidden="true" />
+                                </ControlButton>
+                            </div>
+
+                            <ControlButton
+                                label="Previous page"
                                 disabled={page <= 1}
-                                aria-label="Previous page"
+                                onClick={() => props.onPage(page - 1)}
                             >
                                 <ArrowLeft size={15} aria-hidden="true" />
-                            </button>
-                            <span className="min-w-[64px] text-center text-[12px] font-medium text-white/75 tabular">
+                            </ControlButton>
+                            <span className="min-w-[52px] text-center text-[12px] font-medium text-stage-ink/75 tabular">
                                 {page} / {Math.max(1, pages)}
                             </span>
-                            <button
-                                type="button"
-                                className="call-control h-9 min-w-9 px-2"
-                                onClick={() => onPage(Math.min(pages, page + 1))}
+                            <ControlButton
+                                label="Next page"
                                 disabled={page >= pages}
-                                aria-label="Next page"
+                                onClick={() => props.onPage(page + 1)}
                             >
                                 <ArrowRight size={15} aria-hidden="true" />
-                            </button>
-                            <button
-                                type="button"
-                                className="call-control h-9 min-w-9 px-2"
-                                onClick={onClear}
-                                title="Clear this page"
-                                aria-label="Clear this page"
-                            >
+                            </ControlButton>
+                            <ControlButton label="Clear this page" onClick={props.onClear}>
                                 <ArrowsClockwise size={15} aria-hidden="true" />
-                            </button>
-                        </div>
-                    </>
-                ) : (
-                    <p className="px-2 text-[12px] text-white/60">
-                        Page {page} of {Math.max(1, pages)} · {canDraw ? 'You can draw on this board' : 'View only'}
-                    </p>
-                )}
+                            </ControlButton>
+
+                            {props.onNewRoom ? (
+                                <ControlButton
+                                    label="Start a fresh room (clears every drawing)"
+                                    onClick={props.onNewRoom}
+                                >
+                                    <Sparkle size={15} weight="fill" aria-hidden="true" />
+                                </ControlButton>
+                            ) : null}
+                        </>
+                    ) : (
+                        <span className="px-1 text-[11px] text-stage-ink/50 tabular">
+                            {page} / {Math.max(1, pages)}
+                        </span>
+                    )}
+
+                    <ControlButton
+                        label={fullscreen ? 'Leave fullscreen (Esc)' : 'Fullscreen'}
+                        onClick={props.onToggleFullscreen}
+                        className="bg-stage-ink/5 hover:bg-stage-ink/10"
+                    >
+                        {fullscreen ? (
+                            <ArrowsIn size={15} aria-hidden="true" />
+                        ) : (
+                            <ArrowsOut size={15} aria-hidden="true" />
+                        )}
+                    </ControlButton>
+                </div>
             </div>
 
-            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border-t border-white/10 pt-1.5">
-                <div className="flex items-center gap-0.5" role="group" aria-label="Drawing tool">
-                    {tools.map((item) => (
-                        <button
-                            key={item.value}
-                            type="button"
-                            disabled={!canDraw}
-                            onClick={() => onTool(item.value)}
-                            className={cn(
-                                'inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium transition disabled:pointer-events-none disabled:opacity-40',
-                                tool === item.value ? 'bg-white text-stage' : 'text-white/70 hover:bg-white/10 hover:text-white',
-                            )}
-                            aria-pressed={tool === item.value}
-                            title={item.label}
-                        >
-                            <item.icon size={15} aria-hidden="true" />
-                            <span className="hidden sm:inline">{item.label}</span>
-                        </button>
-                    ))}
-                </div>
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5 border-t border-stage-ink/10 pt-1.5">
+                <div className="flex flex-wrap items-center gap-0.5" role="group" aria-label="Drawing tool">
+                    {TOOLS.map((item) => {
+                        const Icon = TOOL_ICON[item.value];
 
-                <div className="flex items-center gap-1 border-l border-white/10 pl-2" role="group" aria-label="Ink colour">
-                    {colors.map((value) => (
-                        <button
-                            key={value}
-                            type="button"
-                            disabled={!canDraw}
-                            onClick={() => {
-                                onColor(value);
-
-                                if (tool === 'eraser') {
-                                    onTool('pen');
+                        return (
+                            <button
+                                key={item.value}
+                                type="button"
+                                disabled={!canDraw}
+                                onClick={() => props.onTool(item.value)}
+                                className={cn('tool-button', tool === item.value && 'tool-button-active')}
+                                aria-pressed={tool === item.value}
+                                title={
+                                    item.value === 'eraser'
+                                        ? `${item.label} (E)`
+                                        : item.value === 'laser'
+                                          ? `${item.label} pointer (L)`
+                                          : item.value === 'spotlight'
+                                            ? `${item.label} (S)`
+                                            : item.label
                                 }
-                            }}
-                            className={cn(
-                                'h-6 w-6 rounded-full border-2 transition disabled:pointer-events-none disabled:opacity-40',
-                                color === value ? 'border-white scale-105' : 'border-white/25 hover:border-white/60',
-                            )}
-                            style={{ backgroundColor: value }}
-                            aria-label={`Ink colour ${value}`}
-                            aria-pressed={color === value}
-                        />
-                    ))}
+                            >
+                                <Icon size={15} aria-hidden="true" />
+                                <span className="hidden sm:inline">{item.label}</span>
+                            </button>
+                        );
+                    })}
                 </div>
 
-                <div className="flex items-center gap-1 border-l border-white/10 pl-2" role="group" aria-label="Stroke size">
-                    {widths.map((value, index) => (
-                        <button
-                            key={value}
-                            type="button"
-                            disabled={!canDraw}
-                            onClick={() => onWidth(value)}
-                            className={cn(
-                                'flex h-6 w-6 items-center justify-center rounded-full transition disabled:pointer-events-none disabled:opacity-40',
-                                width === value ? 'bg-white/20' : 'hover:bg-white/10',
-                            )}
-                            aria-label={`Stroke size ${index + 1}`}
-                            aria-pressed={width === value}
+                {tool === 'eraser' ? (
+                    <div
+                        className="flex items-center gap-1 border-l border-stage-ink/10 pl-2"
+                        role="group"
+                        aria-label="Eraser size"
+                    >
+                        <span className="hidden px-1 text-[10px] font-semibold tracking-[0.12em] text-stage-ink/40 uppercase sm:inline">
+                            Eraser
+                        </span>
+                        {ERASER_WIDTHS.map((value, index) => (
+                            <button
+                                key={value}
+                                type="button"
+                                disabled={!canDraw}
+                                onClick={() => props.onEraserWidth(value)}
+                                className={cn(
+                                    'flex h-8 w-8 items-center justify-center rounded-full transition disabled:pointer-events-none disabled:opacity-40',
+                                    eraserWidth === value ? 'bg-stage-ink/20' : 'hover:bg-stage-ink/10',
+                                )}
+                                aria-label={`Eraser size ${index + 1}`}
+                                aria-pressed={eraserWidth === value}
+                                title={['Small eraser', 'Large eraser', 'Extra-large eraser'][index]}
+                            >
+                                <span
+                                    className="rounded-full border-2 border-stage-ink/60 bg-stage-ink/10"
+                                    style={{ width: 9 + index * 6, height: 9 + index * 6 }}
+                                />
+                            </button>
+                        ))}
+                    </div>
+                ) : tool === 'spotlight' ? null : (
+                    <>
+                        {tool !== 'laser' ? (
+                            <div
+                                className="flex items-center gap-1 border-l border-stage-ink/10 pl-2"
+                                role="group"
+                                aria-label="Ink colour"
+                            >
+                                {INK_COLORS.map((value) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        disabled={!canDraw}
+                                        onClick={() => {
+                                            props.onColor(value);
+                                        }}
+                                        className={cn(
+                                            'h-6 w-6 rounded-full border-2 transition disabled:pointer-events-none disabled:opacity-40',
+                                            color === value ? 'scale-105 border-stage-ink' : 'border-stage-ink/25 hover:border-stage-ink/60',
+                                        )}
+                                        style={{ backgroundColor: value }}
+                                        aria-label={`Ink colour ${value}`}
+                                        aria-pressed={color === value}
+                                    />
+                                ))}
+                            </div>
+                        ) : null}
+
+                        <div
+                            className="flex items-center gap-1 border-l border-stage-ink/10 pl-2"
+                            role="group"
+                            aria-label="Stroke size"
                         >
-                            <span
-                                className="rounded-full bg-white/80"
-                                style={{ width: 4 + index * 4, height: 4 + index * 3 }}
-                            />
-                        </button>
-                    ))}
-                </div>
+                            {INK_WIDTHS.map((value, index) => (
+                                <button
+                                    key={value}
+                                    type="button"
+                                    disabled={!canDraw}
+                                    onClick={() => props.onWidth(value)}
+                                    className={cn(
+                                        'flex h-6 w-6 items-center justify-center rounded-full transition disabled:pointer-events-none disabled:opacity-40',
+                                        width === value ? 'bg-stage-ink/20' : 'hover:bg-stage-ink/10',
+                                    )}
+                                    aria-label={`Stroke size ${index + 1}`}
+                                    aria-pressed={width === value}
+                                >
+                                    <span
+                                        className="rounded-full bg-stage-ink/80"
+                                        style={{ width: 4 + index * 4, height: 4 + index * 3 }}
+                                    />
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
+
+                <button
+                    type="button"
+                    disabled={!canDraw || !canUndo}
+                    onClick={props.onUndo}
+                    className="tool-button ml-1 disabled:pointer-events-none disabled:opacity-40"
+                    title="Undo your last stroke"
+                >
+                    <ArrowCounterClockwise size={15} aria-hidden="true" />
+                    <span className="hidden sm:inline">Undo</span>
+                </button>
+                <button
+                    type="button"
+                    disabled={!canDraw || !canRedo}
+                    onClick={props.onRedo}
+                    className="tool-button disabled:pointer-events-none disabled:opacity-40"
+                    title="Redo the stroke you just undid"
+                >
+                    <ArrowClockwise size={15} aria-hidden="true" />
+                    <span className="hidden sm:inline">Redo</span>
+                </button>
 
                 {canManage ? (
                     <button
                         type="button"
-                        onClick={onToggleStudents}
+                        onClick={props.onToggleStudents}
                         className={cn(
                             'ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition',
-                            studentsCanAnnotate ? 'bg-live text-white hover:bg-[#176f34]' : 'text-white/70 hover:bg-white/10 hover:text-white',
+                            studentsCanAnnotate
+                                ? 'bg-live text-live-ink hover:bg-live/85'
+                                : 'text-stage-ink/70 hover:bg-stage-ink/10 hover:text-stage-ink',
                         )}
                         aria-pressed={studentsCanAnnotate}
-                        title="Let students draw on the board"
+                        title="Let the selected students draw on the board"
                     >
                         <HandPalm size={15} weight={studentsCanAnnotate ? 'fill' : 'regular'} aria-hidden="true" />
-                        <span className="hidden sm:inline">{studentsCanAnnotate ? 'Students can draw' : 'Hand over the pen'}</span>
+                        <span className="hidden sm:inline">
+                            {studentsCanAnnotate ? 'Students can draw' : 'Hand over the pen'}
+                        </span>
                     </button>
                 ) : null}
             </div>
         </div>
+    );
+}
+
+function ControlButton({
+    label,
+    disabled = false,
+    onClick,
+    className,
+    children,
+}: {
+    label: string;
+    disabled?: boolean;
+    onClick: () => void;
+    className?: string;
+    children: ReactNode;
+}) {
+    return (
+        <button
+            type="button"
+            className={cn('call-control h-9 min-w-9 px-2', className)}
+            onClick={onClick}
+            disabled={disabled}
+            title={label}
+            aria-label={label}
+        >
+            {children}
+        </button>
     );
 }

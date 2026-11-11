@@ -11,14 +11,12 @@ namespace App\Enums;
 enum BoardSurface: string
 {
     case Canvas = 'canvas';
-    case Notebook = 'notebook';
     case Pdf = 'pdf';
 
     public function label(): string
     {
         return match ($this) {
             self::Canvas => 'Canvas',
-            self::Notebook => 'Notebook',
             self::Pdf => 'PDF',
         };
     }

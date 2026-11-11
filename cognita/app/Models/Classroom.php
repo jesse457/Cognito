@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\BoardSurface;
 use Database\Factories\ClassroomFactory;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -100,6 +101,45 @@ class Classroom extends Model
     public function board(): HasOne
     {
         return $this->hasOne(ClassBoard::class);
+    }
+
+    /** The board row, created on first use for classes made before it existed. */
+    public function boardOrCreate(): ClassBoard
+    {
+        return $this->board()->firstOrCreate([], [
+            'surface' => BoardSurface::Canvas,
+            'title' => BoardSurface::Canvas->label(),
+        ]);
+    }
+
+    /** The rooms of this class; only one is normally live. @return HasMany<CallSession, $this> */
+    public function callSessions(): HasMany
+    {
+        return $this->hasMany(CallSession::class);
+    }
+
+    /** PDFs that have ever been attached to this class. @return HasMany<ClassDocument, $this> */
+    public function documents(): HasMany
+    {
+        return $this->hasMany(ClassDocument::class);
+    }
+
+    /** Automatic call attendance rows. @return HasMany<AttendanceRecord, $this> */
+    public function attendanceRecords(): HasMany
+    {
+        return $this->hasMany(AttendanceRecord::class);
+    }
+
+    /** Class questions and their answers. @return HasMany<Question, $this> */
+    public function questions(): HasMany
+    {
+        return $this->hasMany(Question::class);
+    }
+
+    /** Live polls opened in this class. @return HasMany<Poll, $this> */
+    public function polls(): HasMany
+    {
+        return $this->hasMany(Poll::class);
     }
 
     /** @param  Builder<Classroom>  $query */

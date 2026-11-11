@@ -1,12 +1,22 @@
 import { Head, Link, router, useForm } from '@inertiajs/react';
-import { ArrowsClockwise, Microphone, Trash, Users } from '@phosphor-icons/react';
+import {
+    ArrowRight,
+    ArrowsClockwise,
+    CalendarBlank,
+    DownloadSimple,
+    FilePdf,
+    Microphone,
+    Trash,
+    Users,
+} from '@phosphor-icons/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import Button from '@/components/ui/Button';
-import { Field, Select, TextInput } from '@/components/ui/Field';
+import { Field, TextInput } from '@/components/ui/Field';
 import KeyChip from '@/components/ui/KeyChip';
+import Select from '@/components/ui/Select';
 import { routes } from '@/lib/routes';
-import { pluralize } from '@/lib/utils';
+import { cn, pluralize } from '@/lib/utils';
 
 interface ClassroomPageProps {
     classroom: {
@@ -28,18 +38,26 @@ interface ClassroomPageProps {
         name: string;
         email: string;
         joined_at: string | null;
+        can_draw: boolean;
+        attendance_status: string;
     }>;
+    attendance: {
+        date: string;
+        date_label: string;
+        present: number;
+        absent: number;
+    };
     courses: Array<{ id: number; title: string }>;
 }
 
 const surfaceLabels: Record<string, string> = {
     canvas: 'Blank canvas',
-    notebook: 'Notebook page',
     pdf: 'PDF',
 };
 
-export default function InstructorClassroom({ classroom, students, courses }: ClassroomPageProps) {
+export default function InstructorClassroom({ classroom, students, attendance, courses }: ClassroomPageProps) {
     const [confirming, setConfirming] = useState(false);
+    const [attendanceDate, setAttendanceDate] = useState(attendance.date);
     const settings = useForm({
         name: classroom.name,
         course_id: classroom.course_id === null ? '' : String(classroom.course_id),
@@ -59,13 +77,31 @@ export default function InstructorClassroom({ classroom, students, courses }: Cl
         );
     }
 
+    function toggleIndividualDrawing(studentId: number, canDraw: boolean): void {
+        router.patch(
+            routes.instructor.studentDrawing(classroom.id, studentId),
+            { can_draw: canDraw },
+            { preserveScroll: true, preserveState: true },
+        );
+    }
+
+    function changeAttendanceDate(date: string): void {
+        setAttendanceDate(date);
+        if (date === '') return;
+        router.get(
+            routes.instructor.classroom(classroom.id),
+            { date },
+            { preserveState: true, preserveScroll: true, replace: true },
+        );
+    }
+
     return (
         <>
             <Head title={classroom.name} />
 
             <nav className="flex items-center gap-1.5 text-xs text-ink-muted" aria-label="Breadcrumb">
-                <Link href={routes.instructor.dashboard} className="hover:text-ink">
-                    Teaching
+                <Link href={routes.instructor.classrooms} className="hover:text-ink">
+                    Classes
                 </Link>
                 <span aria-hidden="true">/</span>
                 <span className="text-ink">{classroom.name}</span>
@@ -88,6 +124,14 @@ export default function InstructorClassroom({ classroom, students, courses }: Cl
                 </div>
 
                 <div className="flex flex-wrap gap-2">
+                    <Link
+                        href={routes.instructor.classroomAttendance(classroom.id, attendanceDate)}
+                        className="btn btn-outline"
+                        title="The register for one day, with the Excel and PDF downloads"
+                    >
+                        <CalendarBlank size={16} aria-hidden="true" />
+                        Attendance
+                    </Link>
                     <Button
                         variant="outline"
                         onClick={() =>
@@ -126,12 +170,14 @@ export default function InstructorClassroom({ classroom, students, courses }: Cl
                             </p>
                         </div>
                     ) : (
-                        <div className="overflow-x-auto">
+                        <div className="table-wrap">
                             <table className="table">
                                 <thead>
                                     <tr>
                                         <th className="th">Student</th>
                                         <th className="th">Email</th>
+                                        <th className="th">Draw</th>
+                                        <th className="th">Attendance</th>
                                         <th className="th">Joined</th>
                                     </tr>
                                 </thead>
@@ -140,6 +186,31 @@ export default function InstructorClassroom({ classroom, students, courses }: Cl
                                         <tr key={student.id} className="row-hover">
                                             <td className="td font-medium text-ink">{student.name}</td>
                                             <td className="td">{student.email}</td>
+                                            <td className="td">
+                                                <label className="inline-flex cursor-pointer items-center gap-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={student.can_draw}
+                                                        onChange={(event) =>
+                                                            toggleIndividualDrawing(student.id, event.target.checked)
+                                                        }
+                                                        className="h-4 w-4 rounded border-line-strong text-brand focus:ring-brand"
+                                                    />
+                                                    <span className="text-xs">{student.can_draw ? 'Allowed' : 'View only'}</span>
+                                                </label>
+                                            </td>
+                                            <td className="td">
+                                                <span
+                                                    className={cn(
+                                                        'chip',
+                                                        student.attendance_status === 'Present'
+                                                            ? 'chip-live'
+                                                            : 'chip-neutral',
+                                                    )}
+                                                >
+                                                    {student.attendance_status}
+                                                </span>
+                                            </td>
                                             <td className="td tabular">{student.joined_at ?? '—'}</td>
                                         </tr>
                                     ))}
@@ -172,15 +243,13 @@ export default function InstructorClassroom({ classroom, students, courses }: Cl
                                     <Select
                                         id={id}
                                         value={settings.data.course_id}
-                                        onChange={(event) => settings.setData('course_id', event.target.value)}
-                                    >
-                                        <option value="">No course</option>
-                                        {courses.map((course) => (
-                                            <option key={course.id} value={course.id}>
-                                                {course.title}
-                                            </option>
-                                        ))}
-                                    </Select>
+                                        onChange={(course) => settings.setData('course_id', course)}
+                                        invalid={Boolean(settings.errors.course_id)}
+                                        options={[
+                                            { value: '', label: 'No course' },
+                                            ...courses.map((course) => ({ value: String(course.id), label: course.title })),
+                                        ]}
+                                    />
                                 )}
                             </Field>
 
@@ -212,10 +281,76 @@ export default function InstructorClassroom({ classroom, students, courses }: Cl
                             <span>
                                 <span className="block text-sm font-medium text-ink">Students can draw</span>
                                 <span className="mt-0.5 block text-xs text-ink-muted">
-                                    Off means view-only until you hand over the pen inside the call.
+                                    This is the master switch. Use the roster to choose which students may draw.
                                 </span>
                             </span>
                         </label>
+                    </section>
+
+                    <section className="card p-5" aria-labelledby="attendance-heading">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <h2 id="attendance-heading" className="section-title">
+                                    Attendance
+                                </h2>
+                                <p className="meta mt-1">Recorded automatically when students join the call.</p>
+                            </div>
+                            <CalendarBlank size={20} className="text-ink-soft" aria-hidden="true" />
+                        </div>
+
+                        <div className="mt-4 flex flex-col gap-3">
+                            <Field label="Attendance date">
+                                {(id) => (
+                                    <TextInput
+                                        id={id}
+                                        type="date"
+                                        value={attendanceDate}
+                                        onChange={(event) => changeAttendanceDate(event.target.value)}
+                                    />
+                                )}
+                            </Field>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="rounded-xl border border-line bg-surface-sunken/60 p-3">
+                                    <p className="text-[11px] font-semibold tracking-[0.08em] text-ink-soft uppercase">
+                                        Present
+                                    </p>
+                                    <p className="mt-0.5 text-xl font-semibold text-ink">{attendance.present}</p>
+                                </div>
+                                <div className="rounded-xl border border-line bg-surface-sunken/60 p-3">
+                                    <p className="text-[11px] font-semibold tracking-[0.08em] text-ink-soft uppercase">
+                                        Absent
+                                    </p>
+                                    <p className="mt-0.5 text-xl font-semibold text-ink">{attendance.absent}</p>
+                                </div>
+                            </div>
+
+                            <p className="hint mt-0">{attendance.date_label}</p>
+
+                            <div className="flex flex-wrap gap-2">
+                                <Link
+                                    href={routes.instructor.classroomAttendance(classroom.id, attendanceDate)}
+                                    className="btn btn-quiet btn-sm"
+                                >
+                                    Full register
+                                    <ArrowRight size={14} weight="bold" aria-hidden="true" />
+                                </Link>
+                                <a
+                                    href={routes.instructor.attendanceExport(classroom.id, 'xlsx', attendanceDate)}
+                                    className="btn btn-outline btn-sm"
+                                >
+                                    <DownloadSimple size={14} aria-hidden="true" />
+                                    Excel
+                                </a>
+                                <a
+                                    href={routes.instructor.attendanceExport(classroom.id, 'pdf', attendanceDate)}
+                                    className="btn btn-outline btn-sm"
+                                >
+                                    <FilePdf size={14} aria-hidden="true" />
+                                    PDF
+                                </a>
+                            </div>
+                        </div>
                     </section>
 
                     <section className="card p-5" aria-labelledby="danger-heading">

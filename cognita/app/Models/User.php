@@ -65,6 +65,24 @@ class User extends Authenticatable
         return $this->hasMany(Enrollment::class, 'student_id');
     }
 
+    /** @return HasMany<AttendanceRecord, $this> */
+    public function attendanceRecords(): HasMany
+    {
+        return $this->hasMany(AttendanceRecord::class);
+    }
+
+    /** Questions this user asked in their classes. @return HasMany<Question, $this> */
+    public function questions(): HasMany
+    {
+        return $this->hasMany(Question::class);
+    }
+
+    /** Answers this user wrote. @return HasMany<Answer, $this> */
+    public function answers(): HasMany
+    {
+        return $this->hasMany(Answer::class);
+    }
+
     /** Classes this student joined with a key. @return BelongsToMany<Classroom, $this> */
     public function joinedClassrooms(): BelongsToMany
     {

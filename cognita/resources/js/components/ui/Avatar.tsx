@@ -20,7 +20,7 @@ export default function Avatar({
     const tones = {
         brand: 'bg-brand-soft text-brand',
         neutral: 'bg-surface-sunken text-ink-muted',
-        stage: 'bg-white/12 text-white',
+        stage: 'bg-stage-ink/12 text-stage-ink',
     } as const;
 
     return (

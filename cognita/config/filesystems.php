@@ -17,6 +17,19 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Board Document Disk
+    |--------------------------------------------------------------------------
+    |
+    | Which disk class-board PDFs are stored on. Defaults to the S3 driver
+    | (MinIO in development, real S3 in production). Set to "local" for
+    | file-based storage.
+    |
+    */
+
+    'board_disk' => env('BOARDS_DISK', 's3'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Filesystem Disks
     |--------------------------------------------------------------------------
     |
