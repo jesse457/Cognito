@@ -69,6 +69,7 @@ scope now; the whole schema is a handful of tables.
 
 ---
 
+
 ## Schema
 
 | Table | Purpose |
@@ -326,6 +327,38 @@ server sits on a real host or behind TURN/TLS, not for media on this machine. `n
 Drawings belong to the room, not to the class: nothing is saved to the database, so when the
 instructor ends the class or starts a fresh board, the next board starts blank. The PDFs
 attached to the class stay.
+
+## The call session, at a glance
+
+One class, one live call. The instructor's join opens the session; only **End class** closes it.
+A dropped network, a closed laptop or a student arriving early never ends it, so a rejoin lands
+in the same room, the same board and the same attendance row.
+
+### Screens
+
+| Lobby | Live room |
+| --- | --- |
+| ![The call lobby, with the class name, call driver and Join the call button](docs/screenshots/call-lobby.png) | ![A live call with three participants, a raised hand and class comments](docs/screenshots/call-room.png) |
+| **Shared board** | **Live polls** |
+| ![The shared board with a momentum diagram, the participant strip and comments](docs/screenshots/call-board.png) | ![A live poll with two student responses and the countdown](docs/screenshots/call-polls.png) |
+
+| Feature | What happens |
+| --- | --- |
+| **Lobby** | Everyone lands here first: class, role and call driver. An insecure origin warns that the microphone will be blocked; a failed join offers a connection check for this browser's address. With no call server configured, the page says it is running in local preview. |
+| **Joining** | The instructor opens the room by joining. A student who arrives first waits for that moment. One account gets one seat per class: a second browser is refused until the first leaves or its seat goes stale (45 seconds by default). |
+| **Microphones** | The host joins with the mic on; students join muted and listen. A student raises a hand, the header counts it, and the instructor opens or takes back their microphone in **Participants**. That permission lasts for this call only and is never saved. |
+| **Screen share** | Anyone allowed to talk can share their screen. One shared screen takes the main stage; if the board is open, the notice offers to hide it and watch instead. |
+| **Comments** | A short-lived class chat sent over the call's data channel. Messages belong to the room and disappear with it; nothing is stored. |
+| **Participants** | The panel lists everyone with role, raised hand, microphone state and the media path this browser chose. The instructor can remove a participant from the call. |
+| **Board** | Show or hide the shared board without leaving the call, hand the pen to selected students, and rotate to a fresh room with the sparkle when the lesson needs a clean page. See [The board](#the-board). |
+| **Polls** | Timed multiple-choice or open-answer polls belong to the open session and close with it. See [Live polls](#live-polls). |
+| **Recording** | The instructor can record the room to this device; nothing is uploaded. See [Recording, on your device](#recording-on-your-device). |
+| **Attendance** | Joining starts the student's row; heartbeats keep it fresh, leaving closes it, and rejoining the same session adds to the same total. See [Attendance](#attendance). |
+| **Resilience** | The header shows **Live** or **Reconnecting**. Reconnection never opens a new session, and the **End class** button is the only thing that closes the room, its polls and its attendance for everyone. |
+| **Sound and focus** | Synthesised cues cover joins, raised hands, pen handovers and a closing room, with a mute toggle in the header. Board fullscreen keeps the call bar and panels inside the display; all motion respects `prefers-reduced-motion`. |
+
+Keyboard shortcuts while the call is open: `B` board, `F` fullscreen, `M` microphone, `H` hand,
+`P` polls, `R` record (instructor), `Esc` leave fullscreen or close a panel.
 
 ## The board
 
