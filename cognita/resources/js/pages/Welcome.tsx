@@ -1,44 +1,49 @@
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, useForm, usePage } from '@inertiajs/react';
 import { ArrowRight, Key } from '@phosphor-icons/react';
-import { useState } from 'react';
 import type { FormEvent } from 'react';
 import Button from '@/components/ui/Button';
 import { routes } from '@/lib/routes';
 import type { SharedProps } from '@/types';
 
-interface WelcomeProps {
-    errors?: Record<string, string>;
+/** "Dr. Lena Fischer" is addressed as Lena, not as Dr. */
+function firstName(name: string): string {
+    const parts = name.trim().split(/\s+/);
+    const titled = parts.filter((part) => !/^(dr|prof|mr|ms|mrs|mx)\.?$/i.test(part));
+
+    return titled[0] ?? parts[0] ?? name;
 }
 
-export default function Welcome({ errors = {} }: WelcomeProps) {
+/**
+ * The door.
+ *
+ * A student arrives with one thing — the key their instructor read out — so
+ * the key is the first control on the page and the only thing styled as the
+ * primary action. Everything else is a way in for staff.
+ */
+export default function Welcome() {
     const { auth } = usePage<SharedProps>().props;
     const user = auth?.user ?? null;
-    const [key, setKey] = useState('');
-    const [submitting, setSubmitting] = useState(false);
+    const form = useForm({ key: '' });
+    const errors = form.errors;
 
     function submit(event: FormEvent): void {
         event.preventDefault();
-        setSubmitting(true);
 
-        router.post(
-            routes.join,
-            { key: key.trim().toUpperCase() },
-            {
-                onFinish: () => setSubmitting(false),
-            },
-        );
+        form.transform((data) => ({ key: data.key.trim().toUpperCase() }));
+        form.post(routes.join);
     }
 
     return (
         <>
             <Head title="Sign in" />
 
-            <div className="card p-6 sm:p-7">
+            <div className="card p-5 shadow-float">
                 {user ? (
                     <div className="flex flex-col gap-4">
                         <div>
-                            <p className="eyebrow">Signed in</p>
-                            <h2 className="mt-2 text-xl font-semibold tracking-tight">Welcome back, {user.name.split(' ')[0]}</h2>
+                            <h2 className="text-[16px] font-semibold tracking-[-0.01em]">
+                                Welcome back, {firstName(user.name)}
+                            </h2>
                             <p className="page-sub">Your classes are one step away.</p>
                         </div>
                         <Link href={routes.dashboard} className="btn btn-primary w-full">
@@ -49,37 +54,28 @@ export default function Welcome({ errors = {} }: WelcomeProps) {
                 ) : (
                     <div className="flex flex-col gap-5">
                         <div>
-                            <p className="eyebrow">Students</p>
-                            <h2 className="mt-2 text-xl font-semibold tracking-tight">Enter your class key</h2>
-                            <p className="page-sub">
-                                Six characters from your instructor. We open the class call as soon as you are signed in.
-                            </p>
+                            <h2 className="text-[16px] font-semibold tracking-[-0.01em]">Join your class</h2>
+                            <p className="page-sub">Type the six characters your instructor read out.</p>
                         </div>
 
                         <form onSubmit={submit} className="flex flex-col gap-3">
                             <label className="label" htmlFor="class-key">
                                 Class key
                             </label>
-                            <div className="flex gap-2">
-                                <input
-                                    id="class-key"
-                                    name="key"
-                                    value={key}
-                                    onChange={(event) => setKey(event.target.value)}
-                                    placeholder="PHY101"
-                                    autoComplete="off"
-                                    autoCapitalize="characters"
-                                    spellCheck={false}
-                                    maxLength={12}
-                                    className="input input-key"
-                                    aria-invalid={Boolean(errors.key)}
-                                    aria-describedby={errors.key ? 'class-key-error' : 'class-key-hint'}
-                                />
-                                <Button type="submit" variant="primary" disabled={submitting || key.trim() === ''}>
-                                    <Key size={16} weight="bold" aria-hidden="true" />
-                                    {submitting ? 'Opening' : 'Join'}
-                                </Button>
-                            </div>
+                            <input
+                                id="class-key"
+                                name="key"
+                                value={form.data.key}
+                                onChange={(event) => form.setData('key', event.target.value.toUpperCase())}
+                                placeholder="PHY101"
+                                autoComplete="off"
+                                autoCapitalize="characters"
+                                spellCheck={false}
+                                maxLength={12}
+                                className="input input-key"
+                                aria-invalid={Boolean(errors.key)}
+                                aria-describedby={errors.key ? 'class-key-error' : 'class-key-hint'}
+                            />
                             {errors.key ? (
                                 <p className="error" id="class-key-error" role="alert">
                                     {errors.key}
@@ -89,16 +85,25 @@ export default function Welcome({ errors = {} }: WelcomeProps) {
                                     No account yet? Signing in first is fine. The key is kept for you.
                                 </p>
                             )}
+                            <Button
+                                type="submit"
+                                variant="primary"
+                                disabled={form.processing || form.data.key.trim() === ''}
+                                className="mt-1 w-full"
+                            >
+                                <Key size={16} weight="bold" aria-hidden="true" />
+                                {form.processing ? 'Opening' : 'Join class'}
+                            </Button>
                         </form>
 
-                        <div className="divider pt-5">
-                            <p className="meta mb-3">Instructors and administrators sign in here.</p>
+                        <div className="border-t border-line pt-4">
+                            <p className="meta mb-2.5">Instructors and administrators sign in here.</p>
                             <div className="flex flex-col gap-2 sm:flex-row">
                                 <Link href={routes.login} className="btn btn-outline flex-1">
                                     Sign in
                                 </Link>
-                                <Link href={routes.register} className="btn btn-tonal flex-1">
-                                    Create student account
+                                <Link href={routes.register} className="btn btn-quiet flex-1">
+                                    Create account
                                 </Link>
                             </div>
                         </div>
@@ -106,7 +111,7 @@ export default function Welcome({ errors = {} }: WelcomeProps) {
                 )}
             </div>
 
-            <p className="mt-4 text-center text-xs text-ink-muted">
+            <p className="mt-3 text-center text-[11.5px] text-ink-soft">
                 Cognita runs the class call on your browser microphone. Nothing is recorded.
             </p>
         </>

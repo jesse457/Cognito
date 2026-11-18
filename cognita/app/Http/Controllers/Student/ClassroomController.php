@@ -6,14 +6,16 @@ namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceRecord;
+use App\Models\CallSession;
 use App\Models\ClassDocument;
 use App\Models\Classroom;
 use App\Models\User;
 use App\Services\BoardSessions;
 use App\Services\ClassroomAccess;
+use App\Services\CoursePayments;
+use App\Services\DrawPermissions;
 use App\Support\HumanTime;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -30,12 +32,16 @@ class ClassroomController extends Controller
     public function __construct(
         private readonly ClassroomAccess $access,
         private readonly BoardSessions $rooms,
+        private readonly DrawPermissions $draw,
+        private readonly CoursePayments $payments,
     ) {}
 
     public function index(Request $request): Response
     {
         /** @var User $student */
         $student = $request->user();
+
+        $this->authorize('viewAny', Classroom::class);
 
         $classrooms = $this->access->forStudent($student);
         $ids = $this->ids($classrooms);
@@ -98,7 +104,7 @@ class ClassroomController extends Controller
             ],
             'courses' => $courses,
             'classrooms' => $filtered
-                ->map(function (Classroom $classroom) use ($liveIds, $summaries, $documents): array {
+                ->map(function (Classroom $classroom) use ($liveIds, $summaries, $documents, $student): array {
                     $id = (int) $classroom->getKey();
                     $summary = $summaries[$id] ?? $this->emptySummary();
 
@@ -115,6 +121,7 @@ class ClassroomController extends Controller
                         'time_in_class' => HumanTime::duration($summary['seconds']),
                         'days' => $summary['days'],
                         'materials' => (int) ($documents[$id] ?? 0),
+                        'payment' => $this->payments->stateFor($classroom, $student),
                         'call_url' => route('call.show', ['classroom' => $id]),
                         'class_url' => route('student.classes.show', ['classroom' => $id]),
                     ];
@@ -129,9 +136,9 @@ class ClassroomController extends Controller
         /** @var User $student */
         $student = $request->user();
 
-        $this->access->assertStudentMember($student, $classroom);
+        $this->authorize('view', $classroom);
 
-        $classroom->load(['course:id,title', 'instructor:id,name']);
+        $classroom->load(['course:id,title,is_paid,price_cents,currency,payment_url,payment_instructions', 'instructor:id,name']);
         $classroom->loadCount('enrollments');
 
         $records = AttendanceRecord::query()
@@ -166,7 +173,13 @@ class ClassroomController extends Controller
             ->values()
             ->all();
 
-        $live = $this->rooms->live($classroom) !== null;
+        $session = $this->rooms->live($classroom);
+        $live = $session !== null;
+        $sessionState = $this->rooms->stateGiven(
+            $classroom,
+            $session,
+            $session === null ? $this->rooms->nextScheduled($classroom) : null,
+        );
 
         return Inertia::render('Student/Classroom', [
             'classroom' => [
@@ -180,8 +193,8 @@ class ClassroomController extends Controller
                 'call_url' => route('call.show', ['classroom' => $classroom->getKey()]),
                 'board' => [
                     'surface' => $board?->surface->value ?? 'canvas',
-                    'students_can_annotate' => (bool) $board?->students_can_annotate,
                     'has_document' => (bool) $board?->hasDocument(),
+                    'can_draw' => $this->draw->permits((int) $classroom->getKey(), (int) $student->getKey()),
                 ],
                 'class_days' => (int) AttendanceRecord::query()
                     ->where('classroom_id', $classroom->getKey())
@@ -206,7 +219,36 @@ class ClassroomController extends Controller
                 ->values()
                 ->all(),
             'materials' => $documents,
+            'payment' => $this->payments->stateFor($classroom, $student),
+            'session_state' => $sessionState,
+            'sessions' => $this->sessions($classroom),
         ]);
+    }
+
+    /**
+     * The sessions of one class for the student who may enter them.
+     *
+     * A session that is over cannot be rejoined, so it is listed with that
+     * state and no way in.
+     *
+     * @return list<array{id: int, title: string|null, description: string|null, state: string, starts_at: string|null, ends_at: string|null, when: string, until: string, materials: list<array{id: int, name: string, pages: int, size: int, url: string}>}>
+     */
+    private function sessions(Classroom $classroom): array
+    {
+        return $this->rooms->history($classroom)
+            ->map(static fn (CallSession $session): array => [
+                'id' => (int) $session->getKey(),
+                'title' => $session->title,
+                'description' => $session->description,
+                'state' => $session->state(),
+                'starts_at' => $session->starts_at?->toIso8601String(),
+                'ends_at' => $session->ends_at?->toIso8601String(),
+                'when' => HumanTime::dayAt($session->starts_at),
+                'until' => HumanTime::until($session->starts_at),
+                'materials' => $session->materials->map->materialReference()->values()->all(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -271,16 +313,6 @@ class ClassroomController extends Controller
 
     private function lastAttendedLabel(?string $date): string
     {
-        if ($date === null) {
-            return 'Not in a call yet';
-        }
-
-        $day = HumanTime::day(Carbon::parse($date));
-
-        return match ($day) {
-            'Today' => 'In the call today',
-            'Yesterday' => 'Last in class yesterday',
-            default => 'Last in class '.$day,
-        };
+        return HumanTime::lastAttended($date);
     }
 }

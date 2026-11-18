@@ -51,7 +51,6 @@ export interface BoardApi {
     clearPage: () => void;
     flipPage: (page: number) => void;
     changeSurface: (surface: BoardSurface) => void;
-    toggleStudents: () => void;
     setPageCount: (pages: number) => void;
     uploadPdf: (file: File) => Promise<void>;
     presentPdf: (document: BoardDocumentSummary) => Promise<void>;
@@ -71,8 +70,8 @@ export interface BoardApi {
  *
  * Four rules are enforced here and nowhere else:
  *
- *   1. a student may only draw while the host has opened the pen *and* selected
- *      them — locally and for every remote frame that arrives,
+ *   1. a student may only draw while the host has selected them — locally and
+ *      for every remote frame that arrives,
  *   2. undo is personal: you may only remove a stroke you drew,
  *   3. ink is never saved. Strokes reach the server only as realtime frames, and
  *      the only thing a PATCH carries is the board's settings,
@@ -110,9 +109,8 @@ export function useBoard(options: UseBoardOptions): BoardApi {
         setBoard(next);
     }, []);
 
-    const canDraw =
-        options.canManage ||
-        (board.studentsCanAnnotate && board.allowedDrawerIds.includes(options.viewerId));
+    // The pen belongs to one student at a time, and only while the lesson runs.
+    const canDraw = options.canManage || board.allowedDrawerIds.includes(options.viewerId);
 
     const broadcastState = useCallback((next: BoardState) => {
         optionsRef.current.send({ type: 'state', board: next });
@@ -264,19 +262,6 @@ export function useBoard(options: UseBoardOptions): BoardApi {
         },
         [broadcastState, commit, sync],
     );
-
-    const toggleStudents = useCallback(() => {
-        if (!optionsRef.current.canManage) {
-            return;
-        }
-
-        const current = boardRef.current;
-        const next = { ...current, studentsCanAnnotate: !current.studentsCanAnnotate };
-
-        commit(next);
-        broadcastState(next);
-        sync.save({ students_can_annotate: next.studentsCanAnnotate }, { immediate: true });
-    }, [broadcastState, commit, sync]);
 
     /** PDF.js counts the pages once the document is open; the class keeps them. */
     const setPageCount = useCallback(
@@ -569,7 +554,6 @@ export function useBoard(options: UseBoardOptions): BoardApi {
         clearPage,
         flipPage,
         changeSurface,
-        toggleStudents,
         setPageCount,
         uploadPdf,
         presentPdf,
@@ -584,10 +568,6 @@ export function useBoard(options: UseBoardOptions): BoardApi {
 /** A student's frame is only accepted while the pen is open to them. */
 function mayActAsParticipant(message: BoardMessage, board: BoardState, sender: FrameSender): boolean {
     if (message.type !== 'stroke' && message.type !== 'undo') {
-        return false;
-    }
-
-    if (!board.studentsCanAnnotate) {
         return false;
     }
 

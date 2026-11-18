@@ -1,6 +1,8 @@
 import { Head, Link } from '@inertiajs/react';
 import { ArrowRight, Books, ChalkboardTeacher, ChatsCircle, GraduationCap } from '@phosphor-icons/react';
 import Avatar from '@/components/ui/Avatar';
+import RoleChip from '@/components/ui/RoleChip';
+import Stat from '@/components/ui/Stat';
 import { routes } from '@/lib/routes';
 import { pluralize } from '@/lib/utils';
 
@@ -22,12 +24,6 @@ interface AdminDashboardProps {
     }>;
 }
 
-const roleChip: Record<string, string> = {
-    admin: 'chip chip-brand',
-    instructor: 'chip chip-live',
-    student: 'chip chip-neutral',
-};
-
 export default function AdminDashboard({ counts, recentUsers }: AdminDashboardProps) {
     return (
         <>
@@ -41,29 +37,23 @@ export default function AdminDashboard({ counts, recentUsers }: AdminDashboardPr
                 </p>
             </header>
 
-            <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4" aria-label="Platform counts">
-                <div className="stat">
-                    <p className="eyebrow">Accounts</p>
-                    <p className="stat-value tabular">{counts.users}</p>
-                    <p className="meta mt-1">{pluralize(counts.admins, 'administrator')}</p>
-                </div>
-                <div className="stat">
-                    <p className="eyebrow">Instructors</p>
-                    <p className="stat-value tabular">{counts.instructors}</p>
-                    <p className="meta mt-1">Can create courses and classes</p>
-                </div>
-                <div className="stat">
-                    <p className="eyebrow">Students</p>
-                    <p className="stat-value tabular">{counts.students}</p>
-                    <p className="meta mt-1">Join classes with a key</p>
-                </div>
-                <div className="stat">
-                    <p className="eyebrow">Teaching</p>
-                    <p className="stat-value tabular">
-                        {counts.courses}/{counts.classrooms}
-                    </p>
-                    <p className="meta mt-1">courses / live classes</p>
-                </div>
+            <section className="kpi-row grid-cols-2 xl:grid-cols-4" aria-label="Platform counts">
+                <Stat
+                    label="Accounts"
+                    value={counts.users}
+                    hint={pluralize(counts.admins, 'administrator')}
+                />
+                <Stat
+                    label="Instructors"
+                    value={counts.instructors}
+                    hint="Can create courses and classes"
+                />
+                <Stat label="Students" value={counts.students} hint="Join classes with a key" />
+                <Stat
+                    label="Teaching"
+                    value={`${counts.courses}/${counts.classrooms}`}
+                    hint="courses / live classes"
+                />
             </section>
 
             <section className="grid items-start gap-6 lg:grid-cols-[1fr_360px]">
@@ -81,15 +71,13 @@ export default function AdminDashboard({ counts, recentUsers }: AdminDashboardPr
 
                     <ul className="divide-y divide-line">
                         {recentUsers.map((user) => (
-                            <li key={user.id} className="flex items-center gap-3 px-5 py-3">
+                            <li key={user.id} className="flex items-center gap-3 px-4 py-2.5">
                                 <Avatar name={user.name} size="sm" />
                                 <div className="min-w-0 flex-1">
-                                    <p className="truncate text-sm font-medium text-ink">{user.name}</p>
-                                    <p className="truncate text-xs text-ink-muted">{user.email}</p>
+                                    <p className="truncate text-[13.5px] font-medium text-ink">{user.name}</p>
+                                    <p className="truncate text-[12px] text-ink-muted">{user.email}</p>
                                 </div>
-                                <span className={roleChip[user.role] ?? 'chip chip-neutral'}>
-                                    {user.role === 'admin' ? 'Admin' : user.role === 'instructor' ? 'Instructor' : 'Student'}
-                                </span>
+                                <RoleChip role={user.role} />
                             </li>
                         ))}
                     </ul>
@@ -97,44 +85,44 @@ export default function AdminDashboard({ counts, recentUsers }: AdminDashboardPr
 
                 <div className="flex flex-col gap-3">
                     <Link href={routes.admin.users} className="card flex items-center gap-3 p-4 transition hover:border-line-strong">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-brand">
-                            <ChatsCircle size={19} weight="duotone" aria-hidden="true" />
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                            <ChatsCircle size={17} aria-hidden="true" />
                         </span>
                         <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium text-ink">People</span>
-                            <span className="block text-xs text-ink-muted">Promote instructors, remove accounts</span>
+                            <span className="block text-[13.5px] font-medium text-ink">People</span>
+                            <span className="block text-[12px] text-ink-muted">Promote instructors, remove accounts</span>
                         </span>
-                        <ArrowRight size={16} className="text-ink-soft" aria-hidden="true" />
+                        <ArrowRight size={15} className="text-ink-soft" aria-hidden="true" />
                     </Link>
 
                     <Link href={routes.admin.courses} className="card flex items-center gap-3 p-4 transition hover:border-line-strong">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-brand">
-                            <Books size={19} weight="duotone" aria-hidden="true" />
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                            <Books size={17} aria-hidden="true" />
                         </span>
                         <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium text-ink">Courses</span>
-                            <span className="block text-xs text-ink-muted">{pluralize(counts.courses, 'course')}</span>
+                            <span className="block text-[13.5px] font-medium text-ink">Courses</span>
+                            <span className="block text-[12px] text-ink-muted">{pluralize(counts.courses, 'course')}</span>
                         </span>
-                        <ArrowRight size={16} className="text-ink-soft" aria-hidden="true" />
+                        <ArrowRight size={15} className="text-ink-soft" aria-hidden="true" />
                     </Link>
 
                     <Link href={routes.admin.classrooms} className="card flex items-center gap-3 p-4 transition hover:border-line-strong">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-full bg-brand-soft text-brand">
-                            <ChalkboardTeacher size={19} weight="duotone" aria-hidden="true" />
+                        <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-soft text-brand">
+                            <ChalkboardTeacher size={17} aria-hidden="true" />
                         </span>
                         <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium text-ink">Classes</span>
-                            <span className="block text-xs text-ink-muted">{pluralize(counts.classrooms, 'class', 'classes')}</span>
+                            <span className="block text-[13.5px] font-medium text-ink">Classes</span>
+                            <span className="block text-[12px] text-ink-muted">{pluralize(counts.classrooms, 'class')}</span>
                         </span>
-                        <ArrowRight size={16} className="text-ink-soft" aria-hidden="true" />
+                        <ArrowRight size={15} className="text-ink-soft" aria-hidden="true" />
                     </Link>
 
-                    <div className="rounded-2xl border border-line bg-surface-sunken/60 p-4">
-                        <p className="flex items-center gap-2 text-sm font-medium text-ink">
-                            <GraduationCap size={17} weight="duotone" className="text-brand" aria-hidden="true" />
+                    <div className="card p-4">
+                        <p className="flex items-center gap-2 text-[13px] font-medium text-ink">
+                            <GraduationCap size={16} className="text-brand" aria-hidden="true" />
                             How access works
                         </p>
-                        <p className="mt-1.5 text-xs leading-relaxed text-ink-muted">
+                        <p className="mt-1.5 text-[12px] leading-relaxed text-ink-muted">
                             Every page is gated by role. Students only ever see their own classes, instructors only their own
                             teaching, and administrators never edit teaching content.
                         </p>

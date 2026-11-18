@@ -48,7 +48,7 @@ export function requestGrant(tokenUrl: string, session: string): Promise<CallGra
 
 /** Join, or keep the room warm. Called on connect and on a timer. */
 export function touchRoom(url: string): Promise<RoomState> {
-    return requestData<RoomState>(url, { method: 'POST', json: {} });
+    return postRoom(url);
 }
 
 /** Leaving ends only this browser's call, never the class session. */
@@ -57,6 +57,11 @@ export function leaveRoom(url: string): void {
 }
 
 export function restartRoom(url: string): Promise<RoomState> {
+    return postRoom(url);
+}
+
+/** Every room control is the same POST with no body; only the URL differs. */
+function postRoom(url: string): Promise<RoomState> {
     return requestData<RoomState>(url, { method: 'POST', json: {} });
 }
 

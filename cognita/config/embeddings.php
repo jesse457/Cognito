@@ -38,8 +38,8 @@ return [
     'document_prefix' => env('EMBEDDINGS_DOCUMENT_PREFIX'),
 
     // EmbeddingGemma is 768-dimensional. OpenAI's text-embedding-3-small uses
-    // 1536; the vector column must match this value, so re-run the resize
-    // migration and `questions:embed --fresh` after changing it.
+    // 1536; the vector column of the schema is built with this value, so the
+    // schema has to be rebuilt when it changes.
     'dimensions' => (int) env('EMBEDDINGS_DIMENSIONS', 768),
 
     // Cosine distance cutoff (1 - similarity). Hits farther away than this are

@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
-use App\Models\Classroom;
 use App\Models\Question;
 use App\Models\User;
 use App\Services\PostEmbedder;
@@ -26,9 +25,7 @@ class PostEmbedderTest extends TestCase
         Embeddings::fake();
 
         $instructor = User::factory()->instructor()->create();
-        $classroom = Classroom::factory()->create(['instructor_id' => $instructor->getKey()]);
-        $question = Question::factory()->create([
-            'classroom_id' => $classroom->getKey(),
+        $question = Question::factory()->general()->create([
             'user_id' => $instructor->getKey(),
             'title' => 'Momentum after a collision',
             'body' => 'Use conservation of momentum.',

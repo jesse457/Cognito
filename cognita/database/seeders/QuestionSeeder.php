@@ -6,7 +6,7 @@ namespace Database\Seeders;
 
 use App\Models\Answer;
 use App\Models\AnswerVote;
-use App\Models\Classroom;
+use App\Models\Group;
 use App\Models\Question;
 use App\Models\QuestionVote;
 use App\Models\User;
@@ -30,17 +30,20 @@ class QuestionSeeder extends Seeder
             return;
         }
 
-        $classroom = Classroom::query()
-            ->where('instructor_id', $instructor->getKey())
-            ->where('name', DemoClassroomSeeder::CLASSROOM_NAME)
-            ->first();
+        $group = Group::query()->firstOrCreate(
+            ['name' => 'Physics revision'],
+            [
+                'creator_id' => $instructor->getKey(),
+                'description' => 'Exam questions, worked examples and the bits that did not stick.',
+            ],
+        );
 
-        if ($classroom === null) {
-            return;
+        foreach ([$instructor, $studentOne, $studentTwo] as $member) {
+            $group->members()->syncWithoutDetaching([$member->getKey() => ['joined_at' => now()]]);
         }
 
         $collisions = $this->question(
-            $classroom,
+            $group,
             $studentOne,
             'How do I tell elastic from inelastic collisions on the exam?',
             'When two carts collide, the question says one collision is elastic and another is inelastic. '
@@ -68,7 +71,7 @@ class QuestionSeeder extends Seeder
         $this->answerVote($energyAnswer, $instructor, 1);
 
         $normalForce = $this->question(
-            $classroom,
+            $group,
             $studentTwo,
             'Why does the normal force not always equal mg?',
             'In the lift problem from the notes, the normal force changes when the lift accelerates. '
@@ -86,7 +89,7 @@ class QuestionSeeder extends Seeder
         $this->answerVote($liftAnswer, $instructor, 1);
 
         $this->question(
-            $classroom,
+            $group,
             $studentOne,
             'Can someone explain speed versus velocity with a real example?',
             'I understand the formulas, but the difference still feels like a definition question. '
@@ -95,7 +98,7 @@ class QuestionSeeder extends Seeder
         );
 
         $physicsQuestion = $this->question(
-            $classroom,
+            $group,
             $instructor,
             'What should we revise before the problem session on Thursday?',
             'Bring one question you got stuck on from the momentum problem set. '
@@ -145,16 +148,15 @@ class QuestionSeeder extends Seeder
     /**
      * @param  list<string>  $tags
      */
-    private function question(Classroom $classroom, User $author, string $title, string $body, array $tags): Question
+    private function question(Group $group, User $author, string $title, string $body, array $tags): Question
     {
         return Question::query()->firstOrCreate(
             [
-                'classroom_id' => $classroom->getKey(),
+                'group_id' => $group->getKey(),
                 'user_id' => $author->getKey(),
                 'title' => $title,
             ],
             [
-                'visibility' => Question::VISIBILITY_CLASSROOM,
                 'body' => $body,
                 'tags' => $tags,
             ],
@@ -168,12 +170,11 @@ class QuestionSeeder extends Seeder
     {
         return Question::query()->firstOrCreate(
             [
-                'classroom_id' => null,
+                'group_id' => null,
                 'user_id' => $author->getKey(),
                 'title' => $title,
             ],
             [
-                'visibility' => Question::VISIBILITY_COMMUNITY,
                 'body' => $body,
                 'tags' => $tags,
             ],

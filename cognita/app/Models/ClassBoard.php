@@ -5,13 +5,13 @@ declare(strict_types=1);
 namespace App\Models;
 
 use App\Enums\BoardSurface;
+use App\Services\DrawPermissions;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * What the projector shows: the blank canvas or an uploaded PDF, which page,
- * and whether students may draw on it.
+ * What the projector shows: the blank canvas or an uploaded PDF, and which page.
  *
  * The board itself is durable — the deck an instructor put up is still there
  * next week. The drawings are not: they never reach this table, or any table.
@@ -29,11 +29,7 @@ class ClassBoard extends Model
         'surface',
         'title',
         'document_id',
-        'document_path',
-        'document_name',
-        'document_pages',
         'page',
-        'students_can_annotate',
     ];
 
     /**
@@ -43,9 +39,7 @@ class ClassBoard extends Model
     {
         return [
             'surface' => BoardSurface::class,
-            'document_pages' => 'integer',
             'page' => 'integer',
-            'students_can_annotate' => 'boolean',
         ];
     }
 
@@ -63,13 +57,13 @@ class ClassBoard extends Model
 
     public function hasDocument(): bool
     {
-        return $this->document_id !== null || filled($this->document_path);
+        return $this->document_id !== null;
     }
 
     public function pageCount(): int
     {
         return match ($this->surface) {
-            BoardSurface::Pdf => $this->hasDocument() ? max(1, (int) $this->document_pages) : 1,
+            BoardSurface::Pdf => $this->hasDocument() ? max(1, (int) ($this->document?->pages ?? 1)) : 1,
             default => self::defaultPagesFor($this->surface),
         };
     }
@@ -81,11 +75,11 @@ class ClassBoard extends Model
             'document_id' => $document->getKey(),
             'surface' => BoardSurface::Pdf,
             'title' => BoardSurface::Pdf->label(),
-            'document_path' => $document->path,
-            'document_name' => $document->name,
-            'document_pages' => max(1, (int) $document->pages),
             ...($resetPage ? ['page' => 1] : []),
         ])->save();
+
+        // The board now points at another document; the loaded one is stale.
+        $this->unsetRelation('document');
     }
 
     /** Pages a fresh surface starts with: a single canvas, or a PDF's own count. */
@@ -107,12 +101,11 @@ class ClassBoard extends Model
      * @return array{
      *     surface: string,
      *     title: string,
-     *     document: array{id: int|null, name: string, url: string, pages: int, size: int}|null,
+     *     document: array{id: int, name: string, url: string, pages: int, size: int}|null,
      *     documents: list<array{id: int, name: string, url: string, pages: int, size: int, selectUrl: string, active: bool}>,
      *     page: int,
      *     pages: int,
      *     pdfPage: int,
-     *     studentsCanAnnotate: bool,
      *     allowedDrawerIds: list<int>,
      *     session: string|null,
      *     strokes: list<mixed>
@@ -130,12 +123,12 @@ class ClassBoard extends Model
             ? null
             : $documents->first(fn (ClassDocument $document): bool => (int) $document->getKey() === (int) $this->document_id);
 
-        $pdfPages = $this->hasDocument() ? max(1, (int) $this->document_pages) : 1;
+        $pdfPages = $active !== null ? max(1, (int) $active->pages) : 1;
 
         return [
             'surface' => $this->surface->value,
             'title' => (string) ($this->title ?: $this->surface->label()),
-            'document' => $this->activeDocument($active),
+            'document' => $active?->boardReference(),
             'documents' => $documents
                 ->map(fn (ClassDocument $item): array => $item->boardSummary((int) ($this->document_id ?? 0)))
                 ->values()
@@ -145,7 +138,6 @@ class ClassBoard extends Model
             // Remembered even while the canvas is up, so switching back to the
             // PDF resumes where the class left off.
             'pdfPage' => max(1, min((int) $this->page, $pdfPages)),
-            'studentsCanAnnotate' => (bool) $this->students_can_annotate,
             'allowedDrawerIds' => $this->allowedDrawerIds(),
             'session' => $session?->token,
             'strokes' => [],
@@ -153,38 +145,15 @@ class ClassBoard extends Model
     }
 
     /**
-     * @return array{id: int|null, name: string, url: string, pages: int, size: int}|null
+     * The students who may draw right now.
+     *
+     * The list lives in the cache for the length of the class session, so a
+     * board left over from last week grants nothing.
+     *
+     * @return list<int>
      */
-    private function activeDocument(?ClassDocument $active): ?array
-    {
-        if ($active !== null) {
-            return $active->boardReference();
-        }
-
-        // Boards created before the class library existed kept the file path on
-        // the row itself; keep serving those through the legacy URL.
-        if (! $this->hasDocument()) {
-            return null;
-        }
-
-        return [
-            'id' => null,
-            'name' => (string) ($this->document_name ?: 'Document.pdf'),
-            'url' => route('board.document', ['classroom' => $this->classroom_id], absolute: false),
-            'pages' => max(1, (int) $this->document_pages),
-            'size' => 0,
-        ];
-    }
-
-    /** @return list<int> */
     private function allowedDrawerIds(): array
     {
-        return Enrollment::query()
-            ->where('classroom_id', $this->classroom_id)
-            ->where('can_draw', true)
-            ->pluck('student_id')
-            ->map(static fn (mixed $id): int => (int) $id)
-            ->values()
-            ->all();
+        return app(DrawPermissions::class)->allowed((int) $this->classroom_id);
     }
 }

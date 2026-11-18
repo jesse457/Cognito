@@ -8,10 +8,12 @@ use App\Http\Controllers\BoardDocumentController;
 use App\Http\Controllers\CallAttendanceController;
 use App\Http\Controllers\CallModerationController;
 use App\Http\Controllers\CallSessionController;
+use App\Http\Controllers\CourseMaterialController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\JoinController;
 use App\Http\Controllers\LiveCallController;
 use App\Http\Controllers\PollController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WelcomeController;
 use Illuminate\Support\Facades\Route;
 
@@ -48,6 +50,12 @@ Route::middleware('guest')->group(function (): void {
 Route::middleware('auth')->group(function (): void {
     Route::post('logout', [AuthController::class, 'logout'])->name('logout');
     Route::get('dashboard', DashboardController::class)->name('dashboard');
+    Route::get('profile', [ProfileController::class, 'show'])->name('profile');
+
+    // Course files are private: the policy checks the course audience.
+    Route::get('course-materials/{material}', [CourseMaterialController::class, 'show'])
+        ->whereNumber('material')
+        ->name('course-materials.show');
 
     // Live group call for a class (instructor host, enrolled students).
     Route::get('classes/{classroom}/call', [LiveCallController::class, 'show'])
@@ -87,6 +95,18 @@ Route::middleware('auth')->group(function (): void {
         ->whereNumber('classroom')
         ->middleware('throttle:30,1')
         ->name('call.session.end');
+
+    // Announcing a session and starting it are instructor-only. A student may
+    // only enter a session that exists, and only wait for it.
+    Route::post('classes/{classroom}/call/session/schedule', [CallSessionController::class, 'schedule'])
+        ->whereNumber('classroom')
+        ->middleware('throttle:30,1')
+        ->name('call.session.schedule');
+
+    Route::post('classes/{classroom}/call/session/start', [CallSessionController::class, 'start'])
+        ->whereNumber('classroom')
+        ->middleware('throttle:30,1')
+        ->name('call.session.start');
 
     // Live polls belong to one open class session: the timer, the answers and
     // the results all disappear from the room when the class ends.
@@ -181,7 +201,12 @@ Route::middleware(['auth', 'role:admin'])
     ->name('admin.')
     ->group(base_path('routes/admin.php'));
 
-// The class question board. Both students and instructors take part, but
-// never administrators and never someone outside the room.
+// The community platform: feed, posts, groups and the course library. Both
+// students and instructors take part; administrators stay in their console.
 Route::middleware(['auth', 'role:student,instructor'])
     ->group(base_path('routes/questions.php'));
+
+Route::middleware(['auth', 'role:student,instructor'])
+    ->prefix('community')
+    ->name('community.')
+    ->group(base_path('routes/community.php'));

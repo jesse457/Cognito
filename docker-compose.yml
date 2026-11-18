@@ -58,6 +58,19 @@ services:
       mc mb --ignore-existing local/cognita"
     restart: no
 
+  # The shared, in-memory state of a live class: who may draw right now, and
+  # anything else that belongs to a room rather than to the database.
+  # Redis is the store; the app talks to it over the loopback port.
+  redis:
+    image: redis:7-alpine
+    container_name: cognita-redis
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - cognita_redis:/data
+    restart: unless-stopped
+
   livekit:
     image: livekit/livekit-server:v1.13
     container_name: cognita-livekit
@@ -88,3 +101,4 @@ services:
 volumes:
   cognita_db:
   cognita_minio:
+  cognita_redis:

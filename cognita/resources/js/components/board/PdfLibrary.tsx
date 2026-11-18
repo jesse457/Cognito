@@ -1,6 +1,6 @@
 import { CaretDown, Check, FilePdf, UploadSimple } from '@phosphor-icons/react';
-import { useEffect, useRef, useState } from 'react';
-import { cn, formatBytes } from '@/lib/utils';
+import { useEffect, useRef } from 'react';
+import { cn, formatBytes, pluralize } from '@/lib/utils';
 import type { BoardDocumentSummary, BoardSurface } from '@/types';
 
 /** The PDFs that already belong to this class, plus an upload door. */
@@ -94,7 +94,7 @@ export default function PdfLibrary({
                                 <span className="min-w-0 flex-1">
                                     <span className="block truncate font-medium">{document.name}</span>
                                     <span className="block text-[10px] text-stage-ink/40">
-                                        {document.pages} {document.pages === 1 ? 'page' : 'pages'}
+                                        {pluralize(document.pages, 'page')}
                                         {document.size > 0 ? ` · ${formatBytes(document.size)}` : ''}
                                     </span>
                                 </span>

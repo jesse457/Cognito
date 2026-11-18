@@ -570,7 +570,7 @@ export default function BoardStage({
                         }}
                         placeholder="Type, then press Enter"
                         rows={2}
-                        className="absolute z-10 min-w-[16ch] resize rounded-lg border-2 border-brand bg-white/95 px-2 py-1 leading-snug text-ink shadow-[0_8px_26px_rgba(0,0,0,0.25)] focus:outline-none"
+                        className="absolute z-10 min-w-[16ch] resize rounded-lg border-2 border-brand bg-white/95 px-2 py-1 leading-snug text-ink shadow-[0_8px_26px_rgba(0,0,0,0.25)] focus:outline-none focus:ring-2 focus:ring-brand focus:ring-offset-1"
                         style={{
                             left: `${textDraft.x * 100}%`,
                             top: `${textDraft.y * 100}%`,

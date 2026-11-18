@@ -1,11 +1,13 @@
 import { Head, router } from '@inertiajs/react';
-import { MagnifyingGlass, Trash } from '@phosphor-icons/react';
+import { Trash } from '@phosphor-icons/react';
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import Avatar from '@/components/ui/Avatar';
 import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import Pagination from '@/components/ui/Pagination';
+import RoleChip from '@/components/ui/RoleChip';
+import SearchInput from '@/components/ui/SearchInput';
 import Select from '@/components/ui/Select';
 import { routes } from '@/lib/routes';
 import { cn } from '@/lib/utils';
@@ -23,12 +25,6 @@ interface UsersProps {
     users: Paginated<AdminUser>;
     filters: { search: string; role: string };
 }
-
-const roleChip: Record<string, string> = {
-    admin: 'chip chip-brand',
-    instructor: 'chip chip-live',
-    student: 'chip chip-neutral',
-};
 
 export default function AdminUsers({ users, filters }: UsersProps) {
     const [search, setSearch] = useState(filters.search);
@@ -58,20 +54,13 @@ export default function AdminUsers({ users, filters }: UsersProps) {
             <div className="card">
                 <div className="card-head">
                     <form onSubmit={filter} className="flex flex-1 flex-wrap items-center gap-2">
-                        <div className="relative min-w-[220px] flex-1">
-                            <MagnifyingGlass
-                                size={16}
-                                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-ink-soft"
-                                aria-hidden="true"
-                            />
-                            <input
-                                value={search}
-                                onChange={(event) => setSearch(event.target.value)}
-                                placeholder="Search name or email"
-                                className="input pl-9"
-                                aria-label="Search people"
-                            />
-                        </div>
+                        <SearchInput
+                            className="min-w-[220px] flex-1"
+                            value={search}
+                            onChange={setSearch}
+                            placeholder="Search name or email"
+                            ariaLabel="Search people"
+                        />
                         <Button type="submit" variant="outline">
                             Search
                         </Button>
@@ -129,13 +118,7 @@ export default function AdminUsers({ users, filters }: UsersProps) {
                                         </td>
                                         <td className="td">
                                             <div className="flex items-center gap-2">
-                                                <span className={roleChip[user.role]}>
-                                                    {user.role === 'admin'
-                                                        ? 'Admin'
-                                                        : user.role === 'instructor'
-                                                          ? 'Instructor'
-                                                          : 'Student'}
-                                                </span>
+                                                <RoleChip role={user.role} />
                                                 <Select
                                                     value={user.role}
                                                     onChange={(role) =>

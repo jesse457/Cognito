@@ -45,7 +45,8 @@ class LiveEditingTest extends TestCase
             'document' => UploadedFile::fake()->createWithContent('deck.pdf', '%PDF-1.4 deck'),
         ])->assertOk();
 
-        $classroom->board->fresh()->update(['document_pages' => 8, 'page' => 4]);
+        $classroom->documents()->firstOrFail()->update(['pages' => 8]);
+        $classroom->board->fresh()->update(['page' => 4]);
 
         $this->actingAs($student)
             ->get("/classes/{$classroom->id}/call")

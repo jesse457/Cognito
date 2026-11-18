@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
+use App\Enums\BoardSurface;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateBoardRequest extends FormRequest
 {
@@ -22,10 +24,9 @@ class UpdateBoardRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'surface' => ['sometimes', 'required', 'string', 'in:canvas,pdf'],
+            'surface' => ['sometimes', 'required', Rule::enum(BoardSurface::class)],
             'page' => ['sometimes', 'integer', 'min:1', 'max:2000'],
             'pages' => ['sometimes', 'integer', 'min:1', 'max:2000'],
-            'students_can_annotate' => ['sometimes', 'boolean'],
         ];
     }
 }

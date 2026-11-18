@@ -7,7 +7,6 @@ namespace App\Http\Controllers;
 use App\Contracts\RealtimeProvider;
 use App\Models\Classroom;
 use App\Models\User;
-use App\Services\ClassroomAccess;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Throwable;
@@ -18,7 +17,6 @@ use Throwable;
 class CallModerationController extends Controller
 {
     public function __construct(
-        private readonly ClassroomAccess $access,
         private readonly RealtimeProvider $realtime,
     ) {}
 
@@ -27,7 +25,7 @@ class CallModerationController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $this->access->assertInstructorOwnsClassroom($user, $classroom);
+        $this->authorize('moderateCall', $classroom);
 
         $studentId = $this->enrolledStudentId($classroom, $identity, 'removed');
 
@@ -59,7 +57,7 @@ class CallModerationController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $this->access->assertInstructorOwnsClassroom($user, $classroom);
+        $this->authorize('moderateCall', $classroom);
 
         $validated = $request->validate([
             'can_talk' => ['required', 'boolean'],

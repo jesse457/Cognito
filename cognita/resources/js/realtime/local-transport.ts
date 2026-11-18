@@ -5,7 +5,7 @@
  * the same stage, ink and comments with no call server at all. It exists for two
  * reasons — the page stays usable when no provider is configured, and it shows
  * what "swap the realtime backend" actually costs: this file and a line in
- * config/realtime.php.
+ * config/services.php.
  */
 import {
     BOARD_TOPIC,

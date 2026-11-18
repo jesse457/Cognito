@@ -9,11 +9,11 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Class question board
+| Community feed
 |--------------------------------------------------------------------------
 |
-| Open to instructors and students only. Each controller resolves the room
-| through ClassroomAccess, so a guessed id cannot reveal another class.
+| Every signed-in learner can read posts, answer and vote. Posting into a group
+| requires membership; general posts are open to everyone.
 |
 */
 

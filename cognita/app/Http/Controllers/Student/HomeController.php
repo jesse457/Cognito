@@ -6,14 +6,16 @@ namespace App\Http\Controllers\Student;
 
 use App\Http\Controllers\Controller;
 use App\Models\AttendanceRecord;
+use App\Models\CallSession;
 use App\Models\Classroom;
 use App\Models\User;
 use App\Services\AttendanceTracker;
 use App\Services\BoardSessions;
 use App\Services\ClassroomAccess;
+use App\Services\CoursePayments;
+use App\Services\LearningOverview;
 use App\Support\HumanTime;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -37,6 +39,8 @@ class HomeController extends Controller
     public function __construct(
         private readonly ClassroomAccess $access,
         private readonly BoardSessions $rooms,
+        private readonly CoursePayments $payments,
+        private readonly LearningOverview $learning,
     ) {}
 
     public function index(Request $request): Response
@@ -44,14 +48,20 @@ class HomeController extends Controller
         /** @var User $student */
         $student = $request->user();
 
+        $this->authorize('viewAny', Classroom::class);
+
+        $this->authorize('viewStudentDashboard', User::class);
+
         $classrooms = $this->access->forStudent($student);
         $classroomIds = $classrooms->pluck('id')->map(static fn ($id): int => (int) $id)->all();
 
         $liveIds = $this->rooms->liveAmong($classroomIds);
         $history = $this->history($student, $classroomIds);
         $lastAttended = $this->lastAttended($student, $classroomIds);
+        $nextSessions = $this->rooms->nextScheduledAmong($classroomIds);
 
         return Inertia::render('Student/Home', [
+            'learning' => $this->learning->forStudent($student),
             'stats' => [
                 'classes' => $classrooms->count(),
                 'courses' => $classrooms->whereNotNull('course_id')->unique('course_id')->count(),
@@ -71,12 +81,45 @@ class HomeController extends Controller
                     'members' => (int) $classroom->enrollments_count,
                     'live' => in_array((int) $classroom->getKey(), $liveIds, true),
                     'last_attended' => $this->lastAttendedLabel($lastAttended[(int) $classroom->getKey()] ?? null),
+                    'next_session' => $this->nextSession($nextSessions->get((int) $classroom->getKey())),
+                    'payment' => $this->payments->stateFor($classroom, $student),
                     'call_url' => route('call.show', ['classroom' => $classroom->getKey()]),
                 ])
                 ->values()
                 ->all(),
             'recent' => $this->recent($history),
         ]);
+    }
+
+    /**
+     * The next session a student may enter for this class.
+     *
+     * A student can only enter a session the instructor announced, so this is
+     * the one they are waiting for.
+     *
+     * @return array{
+     *     when: string,
+     *     until: string,
+     *     title: string|null,
+     *     description: string|null,
+     *     state: string,
+     *     materials: list<array{id: int, name: string, pages: int, size: int, url: string}>
+     * }|null
+     */
+    private function nextSession(?CallSession $session): ?array
+    {
+        if ($session === null) {
+            return null;
+        }
+
+        return [
+            'when' => HumanTime::dayAt($session->starts_at),
+            'until' => HumanTime::until($session->starts_at),
+            'title' => $session->title,
+            'description' => $session->description,
+            'state' => $session->state(),
+            'materials' => $session->materials->map->materialReference()->values()->all(),
+        ];
     }
 
     /**
@@ -148,17 +191,7 @@ class HomeController extends Controller
 
     private function lastAttendedLabel(?string $date): string
     {
-        if ($date === null) {
-            return 'Not in a call yet';
-        }
-
-        $day = HumanTime::day(Carbon::parse($date));
-
-        return match ($day) {
-            'Today' => 'In the call today',
-            'Yesterday' => 'Last in class yesterday',
-            default => 'Last in class '.$day,
-        };
+        return HumanTime::lastAttended($date);
     }
 
     /**

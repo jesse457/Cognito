@@ -25,8 +25,7 @@ class ClassBoardFactory extends Factory
             'classroom_id' => Classroom::factory(),
             'surface' => 'canvas',
             'title' => 'Canvas',
-            'students_can_annotate' => false,
-            'strokes' => [],
+            'page' => 1,
         ];
     }
 }

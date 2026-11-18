@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace App\Http\Controllers\Instructor;
 
+use App\Enums\PaymentStatus;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreClassroomRequest;
 use App\Http\Requests\UpdateClassroomRequest;
 use App\Models\CallSession;
+use App\Models\ClassDocument;
 use App\Models\Classroom;
+use App\Models\Enrollment;
 use App\Models\User;
 use App\Services\AttendanceTracker;
 use App\Services\BoardSessions;
 use App\Services\ClassroomAccess;
+use App\Services\DrawPermissions;
 use App\Support\HumanTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -31,6 +34,7 @@ class ClassroomController extends Controller
         private readonly ClassroomAccess $access,
         private readonly AttendanceTracker $attendance,
         private readonly BoardSessions $rooms,
+        private readonly DrawPermissions $draw,
     ) {}
 
     /**
@@ -41,6 +45,8 @@ class ClassroomController extends Controller
     {
         /** @var User $instructor */
         $instructor = $request->user();
+
+        $this->authorize('viewAny', Classroom::class);
 
         $classrooms = $this->access->forInstructor($instructor);
         $classrooms->loadCount('documents');
@@ -136,13 +142,20 @@ class ClassroomController extends Controller
         /** @var User $instructor */
         $instructor = $request->user();
 
-        $this->access->assertInstructorOwnsClassroom($instructor, $classroom);
+        $this->authorize('viewManagedClass', $classroom);
 
-        $classroom->load(['course:id,title', 'board', 'enrollments.student:id,name,email']);
+        $classroom->load([
+            'course:id,title,is_paid,price_cents,currency,payment_url,payment_instructions',
+            'board',
+            'enrollments.student:id,name,email',
+        ]);
 
         $date = $this->attendance->date($request->query('date'));
         $report = $this->attendance->report($classroom, $date);
         $attendanceByStudent = collect($report['rows'])->keyBy('id');
+
+        $paid = $classroom->enrollments->filter(fn ($enrollment): bool => $enrollment->isPaid())->count();
+        $pending = $classroom->enrollments->filter(fn ($enrollment): bool => $enrollment->isPending())->count();
 
         return Inertia::render('Instructor/Classroom', [
             'classroom' => [
@@ -151,26 +164,38 @@ class ClassroomController extends Controller
                 'join_code' => $classroom->join_code,
                 'course_id' => $classroom->course_id === null ? null : (int) $classroom->course_id,
                 'course' => $classroom->course?->title,
+                'requires_payment' => $classroom->requiresPayment(),
+                'price_label' => $classroom->requiresPayment() ? $classroom->course?->priceLabel() : null,
                 'created_at' => $classroom->created_at?->toDateString(),
                 'call_url' => route('call.show', ['classroom' => $classroom->getKey()]),
                 'board' => [
                     'surface' => $classroom->board?->surface->value ?? 'canvas',
-                    'students_can_annotate' => (bool) $classroom->board?->students_can_annotate,
                     'has_document' => (bool) $classroom->board?->hasDocument(),
                 ],
             ],
             'students' => $classroom->enrollments
                 ->sortBy(fn ($enrollment): string => (string) $enrollment->student?->name)
-                ->map(static fn ($enrollment): array => [
+                ->map(fn ($enrollment): array => [
                     'id' => (int) $enrollment->student_id,
                     'name' => (string) $enrollment->student?->name,
                     'email' => (string) $enrollment->student?->email,
                     'joined_at' => $enrollment->joined_at?->toDateString(),
-                    'can_draw' => (bool) $enrollment->can_draw,
                     'attendance_status' => (string) ($attendanceByStudent->get($enrollment->student_id)['status'] ?? 'Absent'),
+                    'payment_status' => $this->paymentStatus($classroom, $enrollment)->value,
+                    'payment_label' => $this->paymentStatus($classroom, $enrollment)->label(),
+                    'payment_reference' => $enrollment->payment_reference,
+                    'amount_paid_cents' => (int) $enrollment->amount_paid_cents,
+                    'paid_at' => $enrollment->paid_at?->toDateString(),
                 ])
                 ->values()
                 ->all(),
+            'payment' => [
+                'required' => $classroom->requiresPayment(),
+                'price_label' => $classroom->requiresPayment() ? $classroom->course?->priceLabel() : null,
+                'paid' => $paid,
+                'pending' => $pending,
+                'locked' => max(0, $classroom->enrollments->count() - $paid),
+            ],
             'attendance' => [
                 'date' => $report['date'],
                 'date_label' => $report['date_label'],
@@ -183,6 +208,16 @@ class ClassroomController extends Controller
                 ->map(static fn ($course): array => ['id' => (int) $course->getKey(), 'title' => $course->title])
                 ->values()
                 ->all(),
+            'sessions' => $this->sessions($classroom),
+            'materials' => $classroom->documents()
+                ->orderByDesc('created_at')
+                ->get()
+                ->map(static fn (ClassDocument $document): array => [
+                    ...$document->materialReference(),
+                    'added' => HumanTime::ago($document->created_at),
+                ])
+                ->values()
+                ->all(),
         ]);
     }
 
@@ -191,7 +226,7 @@ class ClassroomController extends Controller
         /** @var User $instructor */
         $instructor = $request->user();
 
-        $this->access->assertInstructorOwnsClassroom($instructor, $classroom);
+        $this->authorize('manageDrawing', $classroom);
 
         /** @var array{can_draw: bool} $data */
         $data = $request->validate([
@@ -202,34 +237,35 @@ class ClassroomController extends Controller
             ->where('student_id', $student->getKey())
             ->firstOrFail();
 
-        $enrollment->update(['can_draw' => (bool) $data['can_draw']]);
+        $allowed = $this->draw->set(
+            (int) $classroom->getKey(),
+            (int) $enrollment->student_id,
+            (bool) $data['can_draw'],
+        );
 
-        $board = $classroom->board()->firstOrCreate([], [
-            'surface' => 'canvas',
-            'title' => 'Canvas',
-        ]);
-
-        if ($data['can_draw'] && ! $board->students_can_annotate) {
-            $board->update(['students_can_annotate' => true]);
-        }
+        $board = $classroom->boardOrCreate();
 
         if ($request->expectsJson() && ! $request->header('X-Inertia')) {
             return response()->json([
                 'data' => [
                     'student_id' => (int) $student->getKey(),
-                    'can_draw' => (bool) $enrollment->can_draw,
-                    'board' => $board->refresh()->state(),
+                    'can_draw' => $allowed,
+                    'board' => $board->state($this->rooms->live($classroom)),
                 ],
             ]);
         }
 
-        return back()->with('success', 'Drawing access updated.');
+        return back()->with('success', $allowed
+            ? $student->name.' may draw until the class ends.'
+            : 'Drawing access taken back.');
     }
 
     public function store(StoreClassroomRequest $request): RedirectResponse
     {
         /** @var User $instructor */
         $instructor = $request->user();
+
+        $this->authorize('create', Classroom::class);
 
         /** @var array{name: string, course_id?: int|null} $data */
         $data = $request->validated();
@@ -247,7 +283,7 @@ class ClassroomController extends Controller
 
     public function update(UpdateClassroomRequest $request, Classroom $classroom): RedirectResponse
     {
-        $this->access->assertInstructorOwnsClassroom($request->user(), $classroom);
+        $this->authorize('update', $classroom);
 
         /** @var array{name: string, course_id?: int|null} $data */
         $data = $request->validated();
@@ -260,9 +296,9 @@ class ClassroomController extends Controller
         return back()->with('success', 'Class updated.');
     }
 
-    public function destroy(Classroom $classroom): RedirectResponse
+    public function destroy(Request $request, Classroom $classroom): RedirectResponse
     {
-        $this->access->assertInstructorOwnsClassroom(request()->user(), $classroom);
+        $this->authorize('delete', $classroom);
 
         $classroom->delete();
 
@@ -272,13 +308,49 @@ class ClassroomController extends Controller
     }
 
     /** Rotate the join key, for example after it leaked into the wrong group chat. */
-    public function rotateKey(Classroom $classroom): RedirectResponse
+    public function rotateKey(Request $request, Classroom $classroom): RedirectResponse
     {
-        $this->access->assertInstructorOwnsClassroom(request()->user(), $classroom);
+        $this->authorize('rotateKey', $classroom);
 
         $classroom->forceFill(['join_code' => Classroom::generateJoinCode()])->save();
 
         return back()->with('success', 'A new class key was generated.');
+    }
+
+    /** A free course can still have old `free` rows; show them as unpaid once paid. */
+    private function paymentStatus(Classroom $classroom, Enrollment $enrollment): PaymentStatus
+    {
+        if ($classroom->requiresPayment() && $enrollment->payment_status === PaymentStatus::Free) {
+            return PaymentStatus::Unpaid;
+        }
+
+        return $enrollment->payment_status;
+    }
+
+    /**
+     * The sessions of one class, newest first.
+     *
+     * The instructor sees the whole list: what is scheduled, what is running and
+     * what is already behind them.
+     *
+     * @return list<array{id: int, title: string|null, description: string|null, state: string, starts_at: string|null, ends_at: string|null, when: string, until: string, materials: list<array{id: int, name: string, pages: int, size: int, url: string}>}>
+     */
+    private function sessions(Classroom $classroom): array
+    {
+        return $this->rooms->history($classroom)
+            ->map(static fn (CallSession $session): array => [
+                'id' => (int) $session->getKey(),
+                'title' => $session->title,
+                'description' => $session->description,
+                'state' => $session->state(),
+                'starts_at' => $session->starts_at?->toIso8601String(),
+                'ends_at' => $session->ends_at?->toIso8601String(),
+                'when' => HumanTime::dayAt($session->starts_at),
+                'until' => HumanTime::until($session->starts_at),
+                'materials' => $session->materials->map->materialReference()->values()->all(),
+            ])
+            ->values()
+            ->all();
     }
 
     /**
@@ -308,16 +380,11 @@ class ClassroomController extends Controller
      */
     private function lastSessionLabel(Classroom $classroom, array $liveIds, Collection $history): string
     {
-        if (in_array((int) $classroom->getKey(), $liveIds, true)) {
-            return 'Room is open';
-        }
-
         $row = $history->get((int) $classroom->getKey());
 
-        if ($row === null) {
-            return 'Not opened yet';
-        }
-
-        return 'Last open '.HumanTime::ago(Carbon::parse((string) $row->last_seen_at));
+        return HumanTime::lastOpened(
+            in_array((int) $classroom->getKey(), $liveIds, true),
+            $row === null ? null : (string) $row->last_seen_at,
+        );
     }
 }

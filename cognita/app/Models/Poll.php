@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\PollKind;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -15,10 +16,6 @@ use Illuminate\Support\Carbon;
  */
 class Poll extends Model
 {
-    public const KIND_OPEN = 'open';
-
-    public const KIND_CHOICE = 'choice';
-
     /** @var list<string> */
     protected $fillable = [
         'classroom_id',
@@ -36,6 +33,7 @@ class Poll extends Model
     protected function casts(): array
     {
         return [
+            'kind' => PollKind::class,
             'ends_at' => 'datetime',
             'closed_at' => 'datetime',
         ];
@@ -73,7 +71,7 @@ class Poll extends Model
 
     public function isChoice(): bool
     {
-        return $this->kind === self::KIND_CHOICE;
+        return $this->kind === PollKind::Choice;
     }
 
     public function isOpen(): bool

@@ -7,9 +7,8 @@ namespace App\Http\Controllers;
 use App\Models\Answer;
 use App\Models\PostMedia;
 use App\Models\Question;
-use App\Services\ClassroomAccess;
+use App\Support\MediaDisk;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 /**
@@ -19,7 +18,7 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
  */
 class PostMediaController extends Controller
 {
-    public function show(Request $request, PostMedia $media, ClassroomAccess $access): StreamedResponse
+    public function show(Request $request, PostMedia $media): StreamedResponse
     {
         $mediable = $media->mediable;
 
@@ -31,11 +30,11 @@ class PostMediaController extends Controller
 
         abort_if($question === null, 404);
 
-        $access->assertQuestionAccess($request->user(), $question);
+        $this->authorize('view', $question);
 
         abort_unless(str_starts_with($media->mime, 'image/'), 404);
 
-        $disk = Storage::disk('local');
+        $disk = MediaDisk::of($media->disk);
 
         abort_unless($disk->exists($media->path), 404);
 

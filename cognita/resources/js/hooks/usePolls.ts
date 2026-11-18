@@ -55,6 +55,12 @@ export function usePolls(classroomId: number, active: boolean): PollApi {
         let cancelled = false;
 
         const load = async (): Promise<void> => {
+            // A hidden tab cannot show the results, so let the room rest and
+            // catch up as soon as the viewer returns.
+            if (document.hidden) {
+                return;
+            }
+
             try {
                 const data = await requestData<{ polls: PollView[] }>(routes.callPolls(classroomId));
 
@@ -68,10 +74,18 @@ export function usePolls(classroomId: number, active: boolean): PollApi {
 
         void load();
         const timer = window.setInterval(() => void load(), REFRESH_MS);
+        const wake = (): void => {
+            if (!document.hidden) {
+                void load();
+            }
+        };
+
+        document.addEventListener('visibilitychange', wake);
 
         return () => {
             cancelled = true;
             window.clearInterval(timer);
+            document.removeEventListener('visibilitychange', wake);
         };
     }, [active, classroomId]);
 

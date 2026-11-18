@@ -20,6 +20,11 @@ export default function Modal({
     children: ReactNode;
 }) {
     const panelRef = useRef<HTMLDivElement | null>(null);
+    const onCloseRef = useRef(onClose);
+
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
 
     useEffect(() => {
         if (!open) {
@@ -28,7 +33,7 @@ export default function Modal({
 
         function onKey(event: KeyboardEvent): void {
             if (event.key === 'Escape') {
-                onClose();
+                onCloseRef.current();
             }
         }
 
@@ -36,7 +41,7 @@ export default function Modal({
         panelRef.current?.querySelector<HTMLElement>('input, textarea, select, button')?.focus();
 
         return () => document.removeEventListener('keydown', onKey);
-    }, [open, onClose]);
+    }, [open]);
 
     if (!open) {
         return null;
@@ -50,18 +55,18 @@ export default function Modal({
                 role="dialog"
                 aria-modal="true"
                 aria-label={title}
-                className="relative z-10 max-h-[86vh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-2xl border border-line bg-surface p-5 shadow-[0_24px_70px_rgba(25,28,32,0.28)] sm:rounded-2xl sm:p-6"
+                className="relative z-10 max-h-[86vh] w-full max-w-lg overflow-y-auto overscroll-contain rounded-t-xl border border-line bg-surface p-5 shadow-float sm:rounded-xl"
             >
                 <div className="flex items-start justify-between gap-4">
                     <div>
-                        <h2 className="text-lg font-semibold tracking-tight">{title}</h2>
+                        <h2 className="text-[16px] font-semibold tracking-[-0.02em]">{title}</h2>
                         {description ? <p className="page-sub mt-1">{description}</p> : null}
                     </div>
                     <button type="button" onClick={onClose} className="btn btn-quiet btn-icon btn-sm" aria-label="Close">
                         <X size={16} weight="bold" aria-hidden="true" />
                     </button>
                 </div>
-                <div className="mt-5">{children}</div>
+                <div className="mt-4">{children}</div>
             </div>
         </div>
     );

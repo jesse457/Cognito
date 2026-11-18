@@ -48,7 +48,7 @@ function applyTheme(theme: ResolvedTheme): void {
     root.classList.toggle('dark', theme === 'dark');
     root.dataset.theme = theme;
     root.style.colorScheme = theme;
-    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0f1411' : '#f3efe6');
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme === 'dark' ? '#0a0c11' : '#f1f3f7');
 }
 
 /**

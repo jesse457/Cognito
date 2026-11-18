@@ -2,7 +2,7 @@
 export type BoardSurface = 'canvas' | 'pdf';
 
 export interface BoardDocument {
-    id: number | null;
+    id: number;
     name: string;
     url: string;
     pages: number;
@@ -57,7 +57,12 @@ export interface BoardState {
     pages: number;
     /** The page the PDF will come back to while the canvas is showing. */
     pdfPage: number;
-    studentsCanAnnotate: boolean;
+    /**
+     * The students who may draw right now.
+     *
+     * There is no class-wide switch: the instructor hands the pen to one
+     * student at a time, and the list dies with the lesson.
+     */
     allowedDrawerIds: number[];
     /** The room drawing is allowed in; null when no room is live. */
     session: string | null;
@@ -183,8 +188,229 @@ export interface CourseSummary {
     id: number;
     title: string;
     description: string | null;
+    status?: CourseStatus;
+    status_label?: string;
     classrooms_count: number;
     created_at?: string | null;
+    /** A paid course keeps its live rooms locked until a student's payment is confirmed. */
+    is_paid: boolean;
+    price_cents: number;
+    currency: CurrencyCode;
+    /** Already formatted: "$49.00"; null for a free course. */
+    price_label: string | null;
+    payment_url: string | null;
+    payment_instructions: string | null;
+}
+
+/* --- Curriculum and progress --------------------------------------------- */
+
+/** The publishing state of a course. */
+export type CourseStatus = 'draft' | 'published' | 'archived';
+
+/** How a lesson is learned. */
+export type LessonType = 'video' | 'article' | 'quiz';
+
+/** Whether students can open a lesson. */
+export type LessonStatus = 'draft' | 'published';
+
+/** How far a student is through one lesson. */
+export type LessonProgressStatus = 'not_started' | 'in_progress' | 'completed';
+
+/** Currencies Cognita can price courses in. */
+export type CurrencyCode = 'XAF' | 'USD' | 'EUR';
+
+/** A label/value pair for a select box. */
+export interface EnumOption {
+    value: string;
+    label: string;
+}
+
+/** A file attached to one lesson. */
+export interface CourseMaterialView {
+    id: number;
+    title: string;
+    lesson_id: number | null;
+    lesson_title?: string | null;
+    mime_type: string | null;
+    size_label: string;
+    kind: 'video' | 'image' | 'pdf' | 'document' | 'archive';
+    url: string;
+    download_url: string;
+}
+
+/** One lesson in the instructor's curriculum. */
+export interface CurriculumLessonView {
+    id: number;
+    title: string;
+    type: LessonType;
+    type_label: string;
+    status: LessonStatus;
+    status_label: string;
+    content: string | null;
+    video_url: string | null;
+    duration_minutes: number | null;
+    position: number;
+    materials_count: number;
+}
+
+/** One module of a course. */
+export interface CurriculumSectionView {
+    id: number;
+    title: string;
+    description: string | null;
+    position: number;
+    lessons: CurriculumLessonView[];
+}
+
+/** A course a student can study at their own pace. */
+export interface StudentCourseView {
+    id: number;
+    title: string;
+    description: string | null;
+    instructor: string | null;
+    sections_count: number;
+    lessons_count: number;
+    is_paid: boolean;
+    price_label: string | null;
+    enrolled: boolean;
+    owned: boolean;
+    progress: { completed: number; total: number; percent: number };
+    continue_url: string | null;
+    url: string;
+}
+
+/** One lesson in a student's course outline. */
+export interface StudentLessonRow {
+    id: number;
+    title: string;
+    type: LessonType;
+    type_label: string;
+    duration_minutes: number | null;
+    progress: LessonProgressStatus;
+    completed: boolean;
+    url: string;
+}
+
+/** One module as a student sees it. */
+export interface StudentSectionView {
+    id: number;
+    title: string;
+    description: string | null;
+    lessons: StudentLessonRow[];
+}
+
+/** A live session linked to a course or one of its lessons. */
+export interface StudentCourseSessionView {
+    id: number;
+    title: string;
+    description: string | null;
+    lesson: string | null;
+    classroom: string | null;
+    state: SessionState;
+    starts_at: string | null;
+    ends_at: string | null;
+    join_url: string;
+}
+
+/** The lesson a student is reading. */
+export interface StudentLessonView {
+    id: number;
+    title: string;
+    type: LessonType;
+    type_label: string;
+    content: string | null;
+    video_url: string | null;
+    duration_minutes: number | null;
+    section: string | null;
+    course: {
+        id: number;
+        title: string;
+        url: string;
+    };
+    materials: CourseMaterialView[];
+    progress: LessonProgressStatus;
+    completed: boolean;
+    completed_at: string | null;
+}
+
+/** The lesson before or after the one being read. */
+export interface LessonNeighbourView {
+    id: number;
+    title: string;
+    url: string;
+}
+
+/** How far a student is through paying for a course. */
+export type PaymentStatus = 'free' | 'unpaid' | 'pending' | 'paid';
+
+/** The payment side of a class, as the call page and class pages see it. */
+export interface PaymentState {
+    required: boolean;
+    can_access: boolean;
+    status: PaymentStatus;
+    status_label: string;
+    price_cents: number;
+    currency: string;
+    price_label: string | null;
+    payment_url: string | null;
+    payment_instructions: string | null;
+    reference: string | null;
+    paid_at: string | null;
+    /** Where a student can tell the instructor they have paid. */
+    submit_url: string | null;
+}
+
+/**
+ * The state of the session a student is looking at.
+ *
+ * - `live`     the instructor has the room open,
+ * - `waiting`  a session was announced and has not started yet,
+ * - `passed`   the session is over and cannot be rejoined,
+ * - `none`     the instructor has not announced anything.
+ */
+export type SessionState = 'live' | 'waiting' | 'passed' | 'none';
+
+/** A PDF the instructor attached to a session for students to download. */
+export interface SessionMaterial {
+    id: number;
+    name: string;
+    pages: number;
+    size: number;
+    url: string;
+}
+
+/** One session of a class, as the instructor and the student see it. */
+export interface ClassSession {
+    id: number;
+    /** The instructor's name for this session; may be empty. */
+    title: string | null;
+    /** What the session covers, written by the instructor. */
+    description: string | null;
+    state: SessionState;
+    starts_at: string | null;
+    ends_at: string | null;
+    /** "Today · 15:00". */
+    when: string;
+    /** "in 20 min", "Tomorrow · 09:00". */
+    until: string;
+    /** What to read or print before the room opens. */
+    materials: SessionMaterial[];
+}
+
+/** The next session a class is waiting for. */
+export interface NextSession {
+    when: string;
+    until: string;
+    title: string | null;
+    description: string | null;
+    state: SessionState;
+    materials: SessionMaterial[];
+}
+
+/** A PDF in the instructor's class library. */
+export interface ClassMaterial extends SessionMaterial {
+    /** "Added 2 h ago". */
+    added: string;
 }
 
 /** A class as the instructor dashboard lists it: with live state and links out. */
@@ -195,6 +421,8 @@ export interface TeachingClassroom extends ClassroomSummary {
     in_call: number;
     /** "Room is open", "Last open 2 h ago", "Not opened yet". */
     last_session: string;
+    /** The next session the instructor announced, if there is one. */
+    next_session?: NextSession | null;
     class_url: string;
     attendance_url: string;
 }
@@ -231,6 +459,10 @@ export interface StudentClassroom extends ClassroomSummary {
     live: boolean;
     /** "In the call today", "Last in class Mon 3 Nov", "Not in a call yet". */
     last_attended: string;
+    /** The next session this student may enter, if the instructor announced one. */
+    next_session?: NextSession | null;
+    /** Whether the live room is unlocked for this student. */
+    payment: PaymentState;
 }
 
 /** An enrolled course, derived from the classes inside it. */

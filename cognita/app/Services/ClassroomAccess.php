@@ -4,10 +4,10 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use App\Enums\PaymentStatus;
 use App\Enums\UserRole;
 use App\Models\Classroom;
 use App\Models\Enrollment;
-use App\Models\Question;
 use App\Models\User;
 use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
@@ -30,7 +30,7 @@ class ClassroomAccess
     public function forInstructor(User $instructor): Collection
     {
         return Classroom::query()
-            ->with('course:id,title')
+            ->with('course:id,title,is_paid,price_cents,currency,payment_url,payment_instructions')
             ->withCount('enrollments')
             ->ownedBy($instructor)
             ->orderByDesc('id')
@@ -41,85 +41,17 @@ class ClassroomAccess
     public function forStudent(User $student): Collection
     {
         return Classroom::query()
-            ->with(['course:id,title', 'instructor:id,name'])
+            ->with([
+                'course:id,title,is_paid,price_cents,currency,payment_url,payment_instructions',
+                'instructor:id,name',
+                // The caller's own membership, so payment state per class does
+                // not become one query per card.
+                'enrollments' => fn ($query) => $query->where('student_id', $student->getKey()),
+            ])
             ->withCount('enrollments')
             ->whereHas('enrollments', fn ($query) => $query->where('student_id', $student->getKey()))
             ->orderByDesc('id')
             ->get();
-    }
-
-    public function assertInstructorOwnsClassroom(User $instructor, Classroom $classroom): Classroom
-    {
-        if ((int) $classroom->instructor_id !== (int) $instructor->getKey()) {
-            abort(403, 'This class belongs to another instructor.');
-        }
-
-        return $classroom;
-    }
-
-    public function assertStudentMember(User $student, Classroom $classroom): Classroom
-    {
-        if (! $classroom->hasMember($student)) {
-            abort(403, 'Join this class with its key first.');
-        }
-
-        return $classroom;
-    }
-
-    /** Whether this user belongs in the class conversation: host or enrolled student. */
-    public function canParticipate(User $user, Classroom $classroom): bool
-    {
-        return $this->isHost($user, $classroom) || ($user->isStudent() && $classroom->hasMember($user));
-    }
-
-    public function assertParticipant(User $user, Classroom $classroom, string $message = 'Join this class before taking part in its questions.'): void
-    {
-        abort_unless($this->canParticipate($user, $classroom), 403, $message);
-    }
-
-    /** Community questions are open to every signed-in student and instructor; class questions stay inside the room. */
-    public function assertQuestionAccess(User $user, Question $question): void
-    {
-        if ($question->isCommunity()) {
-            abort_unless($user->isStudent() || $user->isInstructor(), 403, 'Only signed-in students and instructors can use the community board.');
-
-            return;
-        }
-
-        abort_if($question->classroom === null, 404);
-        $this->assertParticipant($user, $question->classroom);
-    }
-
-    /** Whether this user teaches the class (the only person who owns the board). */
-    public function isHost(?User $user, Classroom $classroom): bool
-    {
-        return $user !== null && (int) $classroom->instructor_id === (int) $user->getKey();
-    }
-
-    public function assertHost(?User $user, Classroom $classroom, string $message = 'Only the class instructor can change the board.'): void
-    {
-        abort_if($user === null, 401);
-        abort_unless($this->isHost($user, $classroom), 403, $message);
-    }
-
-    /**
-     * Resolve the caller's role in a class group call.
-     *
-     * @return array{classroom: Classroom, role: string}
-     */
-    public function assertCanJoinCall(User $user, Classroom $classroom): array
-    {
-        if ((int) $classroom->instructor_id === (int) $user->getKey()) {
-            return ['classroom' => $classroom, 'role' => self::ROLE_HOST];
-        }
-
-        if ($classroom->hasMember($user)) {
-            return ['classroom' => $classroom, 'role' => self::ROLE_PARTICIPANT];
-        }
-
-        // Admins may observe a class board from the admin console but never
-        // join a room they do not teach or attend.
-        abort(403, 'You are not a member of this class.');
     }
 
     /**
@@ -151,13 +83,25 @@ class ClassroomAccess
             ]);
         }
 
-        Enrollment::query()->firstOrCreate(
+        $enrollment = Enrollment::query()->firstOrCreate(
             [
                 'classroom_id' => $classroom->getKey(),
                 'student_id' => $student->getKey(),
             ],
-            ['joined_at' => now()],
+            [
+                'joined_at' => now(),
+                'payment_status' => $classroom->requiresPayment()
+                    ? PaymentStatus::Unpaid->value
+                    : PaymentStatus::Free->value,
+            ],
         );
+
+        // A course may have turned paid after the student first joined. Their
+        // membership is still valid, but the live room now needs a payment;
+        // mark the intent explicitly instead of leaving it looking free.
+        if ($classroom->requiresPayment() && $enrollment->payment_status === PaymentStatus::Free) {
+            $enrollment->forceFill(['payment_status' => PaymentStatus::Unpaid])->save();
+        }
 
         return $classroom;
     }
@@ -166,7 +110,7 @@ class ClassroomAccess
     public function forAdmin(): Collection
     {
         return Classroom::query()
-            ->with(['instructor:id,name', 'course:id,title'])
+            ->with(['instructor:id,name', 'course:id,title,is_paid,price_cents,currency,payment_url,payment_instructions'])
             ->withCount('enrollments')
             ->orderByDesc('id')
             ->get();

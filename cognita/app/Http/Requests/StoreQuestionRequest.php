@@ -19,10 +19,6 @@ class StoreQuestionRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
-        if (! $this->has('scope')) {
-            $this->merge(['scope' => 'class']);
-        }
-
         $tags = $this->input('tags');
 
         if (is_string($tags)) {
@@ -58,13 +54,7 @@ class StoreQuestionRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'scope' => ['required', Rule::in(['class', 'community'])],
-            'classroom_id' => [
-                'nullable',
-                'integer',
-                Rule::exists('classrooms', 'id'),
-                Rule::requiredIf(fn (): bool => $this->input('scope') === 'class'),
-            ],
+            'group_id' => ['nullable', 'integer', Rule::exists('groups', 'id')],
             'title' => ['required', 'string', 'max:160'],
             'body' => ['required', 'string', 'max:12000'],
             'tags' => ['nullable', 'array', 'max:5'],

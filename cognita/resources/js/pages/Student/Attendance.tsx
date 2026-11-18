@@ -10,6 +10,7 @@ import {
 import EmptyState from '@/components/ui/EmptyState';
 import Select from '@/components/ui/Select';
 import Stat from '@/components/ui/Stat';
+import LiveChip from '@/components/ui/LiveChip';
 import { routes } from '@/lib/routes';
 import { cn, pluralize } from '@/lib/utils';
 
@@ -67,8 +68,7 @@ export default function StudentAttendance({ filters, summary, classrooms, sessio
 
             <header className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                    <p className="eyebrow">Student</p>
-                    <h1 className="page-title mt-1.5">Attendance</h1>
+                    <h1 className="page-title">Attendance</h1>
                     <p className="page-sub">
                         Every call you joined, recorded automatically. This is the same register your instructor sees,
                         from your side of the class.
@@ -88,7 +88,7 @@ export default function StudentAttendance({ filters, summary, classrooms, sessio
                 </label>
             </header>
 
-            <section aria-label="Attendance at a glance" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section aria-label="Attendance at a glance" className="kpi-row grid-cols-2 xl:grid-cols-4">
                 <Stat label="Sessions" value={summary.sessions} hint={`in the last ${filters.days} days`} icon={Microphone} />
                 <Stat label="Time in class" value={summary.time_in_class} hint="sum of call time" icon={Clock} />
                 <Stat label="Days attended" value={summary.days} hint="distinct days with a call" icon={CalendarCheck} />
@@ -153,10 +153,7 @@ export default function StudentAttendance({ filters, summary, classrooms, sessio
                                             <td className="td tabular">{session.duration}</td>
                                             <td className="td">
                                                 {session.live ? (
-                                                    <span className="chip chip-live">
-                                                        <span className="live-dot" aria-hidden="true" />
-                                                        In the call
-                                                    </span>
+                                                    <LiveChip label="In the call" />
                                                 ) : (
                                                     <span className="chip chip-neutral">Completed</span>
                                                 )}
@@ -197,7 +194,7 @@ export default function StudentAttendance({ filters, summary, classrooms, sessio
                         ) : (
                             <ul className="divide-y divide-line">
                                 {classrooms.map((classroom) => (
-                                    <li key={classroom.id} className="px-5 py-3.5">
+                                    <li key={classroom.id} className="px-4 py-2.5">
                                         <div className="flex items-start justify-between gap-3">
                                             <div className="min-w-0">
                                                 <Link

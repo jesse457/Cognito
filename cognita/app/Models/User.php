@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use App\Enums\Permission;
 use App\Enums\UserRole;
+use App\Enums\UserStatus;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -23,6 +25,7 @@ class User extends Authenticatable
         'email',
         'password',
         'role',
+        'status',
     ];
 
     /** @var list<string> */
@@ -40,6 +43,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'role' => UserRole::class,
+            'status' => UserStatus::class,
         ];
     }
 
@@ -91,9 +95,37 @@ class User extends Authenticatable
             ->withTimestamps();
     }
 
+    /** Courses this teacher authored. @return HasMany<Course, $this> */
+    public function authoredCourses(): HasMany
+    {
+        return $this->hasMany(Course::class, 'instructor_id');
+    }
+
+    /** Groups this person started. @return HasMany<Group, $this> */
+    public function createdGroups(): HasMany
+    {
+        return $this->hasMany(Group::class, 'creator_id');
+    }
+
+    /** Groups this person joined. @return BelongsToMany<Group, $this> */
+    public function joinedGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(Group::class, 'group_members')->withPivot('joined_at')->withTimestamps();
+    }
+
     // ---------------------------------------------------------------------
     // Role helpers
     // ---------------------------------------------------------------------
+
+    public function hasPermission(Permission $permission): bool
+    {
+        return $this->role->allows($permission);
+    }
+
+    public function isActive(): bool
+    {
+        return $this->status === UserStatus::Active;
+    }
 
     public function isAdmin(): bool
     {

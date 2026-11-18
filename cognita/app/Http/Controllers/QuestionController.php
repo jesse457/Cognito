@@ -5,53 +5,49 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreQuestionRequest;
+use App\Http\Requests\VoteRequest;
 use App\Models\Answer;
-use App\Models\Classroom;
+use App\Models\Group;
 use App\Models\PostMedia;
 use App\Models\Question;
 use App\Models\User;
-use App\Services\ClassroomAccess;
 use App\Services\PostMediaStore;
 use App\Services\QuestionSearch;
+use App\Services\VoteCaster;
 use App\Support\HumanTime;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
 /**
- * The question board: class-scoped threads for a room and community threads
- * open to every signed-in student and instructor. Class reads and writes go
- * through ClassroomAccess; community reads deliberately do not.
+ * The community feed: general posts for everyone, and questions inside the
+ * learner-made groups. Answers and votes work the same way in both.
  */
 class QuestionController extends Controller
 {
-    public function index(Request $request, ClassroomAccess $access, QuestionSearch $search): Response
+    public function index(Request $request, QuestionSearch $search): Response
     {
+        $this->authorize('viewAny', Question::class);
+
         /** @var User $user */
         $user = $request->user();
 
-        $classrooms = $this->classroomsFor($user, $access);
-        $classroomIds = $classrooms->pluck('id')->map(static fn ($id): int => (int) $id)->all();
+        $scope = (string) $request->query('scope', 'all');
 
-        $scope = (string) $request->query('scope', 'class');
-
-        if (! in_array($scope, ['class', 'community'], true)) {
-            $scope = 'class';
+        if (! in_array($scope, ['all', 'general', 'group', 'mine'], true)) {
+            $scope = 'all';
         }
 
-        $community = $scope === 'community';
-        $classroomFilter = $request->integer('classroom') ?: null;
+        $groupId = $request->integer('group') ?: null;
 
-        if ($community) {
-            abort_if($classroomFilter !== null, 404);
-        } elseif ($classroomFilter !== null) {
-            abort_unless(in_array($classroomFilter, $classroomIds, true), 404);
+        if ($scope === 'group') {
+            abort_if($groupId === null, 404);
+            abort_unless(Group::query()->whereKey($groupId)->exists(), 404);
         }
 
         $sort = (string) $request->query('sort', 'newest');
@@ -61,23 +57,30 @@ class QuestionController extends Controller
         }
 
         $term = trim((string) $request->query('q', ''));
+        $myGroupIds = $user->joinedGroups()->pluck('groups.id')->map(static fn ($id): int => (int) $id)->all();
 
         $base = Question::query();
 
-        if ($community) {
-            $base->community();
-        } else {
-            $base->classroom()->whereIn('classroom_id', $classroomIds);
+        switch ($scope) {
+            case 'general':
+                $base->whereNull('group_id');
+                break;
+            case 'group':
+                $base->where('group_id', $groupId);
+                break;
+            case 'mine':
+                $base->where(static function ($query) use ($myGroupIds): void {
+                    $query->whereNull('group_id')->orWhereIn('group_id', $myGroupIds);
+                });
+                break;
         }
 
         $searchMode = $term === '' ? 'none' : 'keyword';
         $searchResult = ['questions' => [], 'answers' => []];
         $semanticIds = [];
 
-        $searchClassroomIds = $classroomFilter === null ? $classroomIds : [$classroomFilter];
-
         if ($term !== '') {
-            $searchResult = $search->search($term, $community, $searchClassroomIds);
+            $searchResult = $search->search($term, $scope === 'group' ? $groupId : null);
             $semanticIds = array_map(
                 static fn (array $match): int => (int) $match['question']->getKey(),
                 $searchResult['questions'],
@@ -94,10 +97,12 @@ class QuestionController extends Controller
             $searchMatches[(int) $match['question']->getKey()] = $match;
         }
 
-        $keywordIds = $term === ''
+        // Keyword ids are only needed to merge with semantic matches. Without
+        // semantic matches the feed applies the LIKE filter itself, so a second
+        // scan of the same rows would be wasted.
+        $keywordIds = $term === '' || $semanticIds === []
             ? []
             : (clone $base)
-                ->when($classroomFilter !== null, fn ($query) => $query->where('classroom_id', $classroomFilter))
                 ->where(function ($inner) use ($term): void {
                     $like = '%'.mb_strtolower($term).'%';
 
@@ -110,119 +115,109 @@ class QuestionController extends Controller
 
         $listedIds = array_values(array_unique([...$semanticIds, ...$keywordIds]));
 
-        $questionsQuery = (clone $base)
-            ->with(['user:id,name', 'classroom:id,name'])
+        $postsQuery = (clone $base)
+            ->with(['user:id,name', 'group:id,name', 'media'])
             ->withCount(['answers', 'media'])
             ->withSum('votes', 'value')
             ->withExists(['answers as has_accepted_answer' => fn ($query) => $query->where('is_accepted', true)])
             ->with(['votes' => fn ($query) => $query->where('user_id', $user->getKey())])
-            ->when($classroomFilter !== null, fn ($query) => $query->where('classroom_id', $classroomFilter))
             ->when($sort === 'unanswered', fn ($query) => $query->whereDoesntHave('answers'));
 
         if ($semanticIds !== []) {
-            $questionsQuery
+            $postsQuery
                 ->whereIn('id', $listedIds)
                 ->orderByRaw($this->rankSql($listedIds), $listedIds);
         } else {
             if ($term !== '') {
                 $like = '%'.mb_strtolower($term).'%';
 
-                $questionsQuery->where(function ($inner) use ($like): void {
+                $postsQuery->where(function ($inner) use ($like): void {
                     $inner->whereRaw('LOWER(title) LIKE ?', [$like])
                         ->orWhereRaw('LOWER(body) LIKE ?', [$like]);
                 });
             }
 
             if ($sort === 'top') {
-                $questionsQuery->orderByRaw('votes_sum_value desc nulls last')->orderByDesc('created_at');
+                $postsQuery->orderByRaw('votes_sum_value desc nulls last')->orderByDesc('created_at')->orderByDesc('id');
             } else {
-                $questionsQuery->orderByDesc('created_at');
+                $postsQuery->orderByDesc('created_at')->orderByDesc('id');
             }
         }
 
-        $questions = $questionsQuery
+        $posts = $postsQuery
             ->paginate(10)
             ->withQueryString()
-            ->through(function (Question $question) use ($user, $searchMatches): array {
-                $excerpt = preg_replace('/\s+/', ' ', $question->body) ?? $question->body;
-                $match = $searchMatches[(int) $question->getKey()] ?? null;
+            ->through(function (Question $post) use ($user, $searchMatches): array {
+                $excerpt = preg_replace('/\s+/', ' ', $post->body) ?? $post->body;
+                $match = $searchMatches[(int) $post->getKey()] ?? null;
 
                 return [
-                    'id' => (int) $question->getKey(),
-                    'title' => $question->title,
+                    'id' => (int) $post->getKey(),
+                    'title' => $post->title,
                     'excerpt' => Str::limit($excerpt, 180),
-                    'tags' => $question->tags ?? [],
-                    'visibility' => $question->visibility,
-                    'score' => (int) ($question->votes_sum_value ?? 0),
-                    'answers_count' => (int) $question->answers_count,
-                    'media_count' => (int) $question->media_count,
-                    'accepted' => (bool) $question->has_accepted_answer,
-                    'my_vote' => (int) ($question->votes->first()?->value ?? 0),
-                    'can_vote' => (int) $question->user_id !== (int) $user->getKey(),
-                    'mine' => (int) $question->user_id === (int) $user->getKey(),
-                    'created_at' => HumanTime::ago($question->created_at),
+                    'tags' => $post->tags ?? [],
+                    'score' => (int) ($post->votes_sum_value ?? 0),
+                    'answers_count' => (int) $post->answers_count,
+                    'media_count' => (int) $post->media_count,
+                    'media' => $this->mediaPayload($post),
+                    'accepted' => (bool) $post->has_accepted_answer,
+                    'my_vote' => (int) ($post->votes->first()?->value ?? 0),
+                    'can_vote' => (int) $post->user_id !== (int) $user->getKey(),
+                    'mine' => (int) $post->user_id === (int) $user->getKey(),
+                    'created_at' => HumanTime::ago($post->created_at),
                     'match_kind' => $match['kind'] ?? null,
                     'match_excerpt' => $match['excerpt'] ?? null,
                     'match_answer_id' => ($match['answer'] ?? null)?->getKey(),
                     'user' => [
-                        'id' => (int) $question->user_id,
-                        'name' => $question->user?->name ?? 'Former student',
+                        'id' => (int) $post->user_id,
+                        'name' => $post->user?->name ?? 'Former member',
                     ],
-                    'classroom' => $question->classroom === null
-                        ? null
-                        : [
-                            'id' => (int) $question->classroom_id,
-                            'name' => $question->classroom->name,
-                        ],
-                    'href' => route('questions.show', ['question' => $question->getKey()]),
+                    'group' => $post->group === null ? null : [
+                        'id' => (int) $post->group_id,
+                        'name' => $post->group->name,
+                    ],
+                    'href' => route('questions.show', ['question' => $post->getKey()]),
                 ];
             });
 
-        return Inertia::render('Questions/Index', [
+        return Inertia::render('Community/Feed', [
             'filters' => [
                 'q' => $term,
-                'classroom' => $classroomFilter,
-                'sort' => $sort,
                 'scope' => $scope,
+                'group' => $groupId,
+                'sort' => $sort,
             ],
             'stats' => [
-                'questions' => (clone $base)->count(),
-                'answers' => Answer::query()
-                    ->whereHas('question', function ($query) use ($community, $classroomIds): void {
-                        if ($community) {
-                            $query->community();
-                        } else {
-                            $query->classroom()->whereIn('classroom_id', $classroomIds);
-                        }
-                    })
-                    ->count(),
-                'solved' => (clone $base)
-                    ->whereHas('answers', fn ($query) => $query->where('is_accepted', true))
-                    ->count(),
+                'posts' => (clone $base)->count(),
+                'answers' => Answer::query()->whereHas('question', $this->scopeClosure($scope, $groupId, $myGroupIds))->count(),
+                'solved' => (clone $base)->whereHas('answers', fn ($query) => $query->where('is_accepted', true))->count(),
                 'unanswered' => (clone $base)->whereDoesntHave('answers')->count(),
-                'unaccepted' => (clone $base)
-                    ->whereHas('answers')
-                    ->whereDoesntHave('answers', fn ($query) => $query->where('is_accepted', true))
-                    ->count(),
                 'mine' => (clone $base)->where('user_id', $user->getKey())->count(),
             ],
-            'classrooms' => $classrooms
-                ->map(static fn (Classroom $classroom): array => [
-                    'id' => (int) $classroom->getKey(),
-                    'name' => $classroom->name,
-                    'course' => $classroom->course?->title,
+            'groups' => Group::query()
+                ->withCount(['members', 'questions'])
+                ->withExists(['members as joined' => fn ($query) => $query->where('user_id', $user->getKey())])
+                ->orderBy('name')
+                ->get()
+                ->map(static fn (Group $group): array => [
+                    'id' => (int) $group->getKey(),
+                    'name' => $group->name,
+                    'description' => $group->description,
+                    'members_count' => (int) $group->members_count,
+                    'posts_count' => (int) $group->questions_count,
+                    'joined' => (bool) $group->joined,
+                    'href' => route('community.groups.show', ['group' => $group->getKey()]),
                 ])
-                ->values()
                 ->all(),
-            'questions' => $questions,
+            'posts' => $posts,
             'search' => [
                 'mode' => $searchMode,
                 'term' => $term,
-                'total' => count($listedIds),
+                'total' => $posts->total(),
                 'answers' => array_map(
                     static fn (array $match): array => [
-                        'question_id' => (int) $match['question']->getKey(),
-                        'question_title' => $match['question']->title,
+                        'post_id' => (int) $match['question']->getKey(),
+                        'post_title' => $match['question']->title,
                         'answer_id' => (int) $match['answer']->getKey(),
                         'excerpt' => $match['excerpt'],
                         'href' => route('questions.show', ['question' => $match['question']->getKey()])
@@ -231,21 +226,19 @@ class QuestionController extends Controller
                     $searchResult['answers'],
                 ),
             ],
-            'canAsk' => $community || $classroomIds !== [],
         ]);
     }
 
-    public function show(Request $request, Question $question, ClassroomAccess $access, QuestionSearch $search): Response
+    public function show(Request $request, Question $question, QuestionSearch $search): Response
     {
         /** @var User $user */
         $user = $request->user();
 
-        $access->assertQuestionAccess($user, $question);
+        $this->authorize('view', $question);
 
         $question->load([
             'user:id,name',
-            'classroom:id,name,course_id',
-            'classroom.course:id,title',
+            'group:id,name,description,creator_id',
             'media',
             'votes' => fn ($query) => $query->where('user_id', $user->getKey()),
         ])->loadCount('answers')->loadSum('votes', 'value');
@@ -272,22 +265,21 @@ class QuestionController extends Controller
                 'created_at' => HumanTime::ago($answer->created_at),
                 'user' => [
                     'id' => (int) $answer->user_id,
-                    'name' => $answer->user?->name ?? 'Former student',
+                    'name' => $answer->user?->name ?? 'Former member',
                 ],
             ]);
 
         $acceptedAnswer = $answers->firstWhere('accepted', true);
 
         $relatedMatches = $search->related($question, 5);
-
         $relatedQuestions = collect($relatedMatches)->pluck('question');
 
         if ($relatedQuestions->isEmpty()) {
             $relatedQuestions = Question::query()
                 ->when(
-                    $question->isCommunity(),
-                    fn ($query) => $query->community(),
-                    fn ($query) => $query->classroom()->where('classroom_id', $question->classroom_id),
+                    $question->group_id === null,
+                    fn ($query) => $query->whereNull('group_id'),
+                    fn ($query) => $query->where('group_id', $question->group_id),
                 )
                 ->whereKeyNot($question->getKey())
                 ->latest()
@@ -295,28 +287,16 @@ class QuestionController extends Controller
                 ->get();
         }
 
-        $relatedQuestions->each(function (Question $item): void {
-            $item->loadCount('answers')->loadSum('votes', 'value');
-        });
+        $relatedQuestions = EloquentCollection::make($relatedQuestions->all())
+            ->loadCount('answers')
+            ->loadSum('votes', 'value');
 
-        $related = $relatedQuestions
-            ->map(static fn (Question $item): array => [
-                'id' => (int) $item->getKey(),
-                'title' => $item->title,
-                'score' => (int) ($item->votes_sum_value ?? 0),
-                'answers_count' => (int) $item->answers_count,
-                'href' => route('questions.show', ['question' => $item->getKey()]),
-            ])
-            ->values()
-            ->all();
-
-        return Inertia::render('Questions/Show', [
+        return Inertia::render('Community/Post', [
             'question' => [
                 'id' => (int) $question->getKey(),
                 'title' => $question->title,
                 'body' => $question->body,
                 'tags' => $question->tags ?? [],
-                'visibility' => $question->visibility,
                 'score' => (int) ($question->votes_sum_value ?? 0),
                 'answers_count' => (int) $question->answers_count,
                 'accepted' => $acceptedAnswer !== null,
@@ -328,110 +308,81 @@ class QuestionController extends Controller
                 'created_at' => HumanTime::ago($question->created_at),
                 'user' => [
                     'id' => (int) $question->user_id,
-                    'name' => $question->user?->name ?? 'Former student',
+                    'name' => $question->user?->name ?? 'Former member',
                 ],
-                'classroom' => $question->classroom === null
-                    ? null
-                    : [
-                        'id' => (int) $question->classroom_id,
-                        'name' => $question->classroom->name,
-                        'course' => $question->classroom->course?->title,
-                    ],
+                'group' => $question->group === null ? null : [
+                    'id' => (int) $question->group_id,
+                    'name' => $question->group->name,
+                    'href' => route('community.groups.show', ['group' => $question->group->getKey()]),
+                ],
                 'href' => route('questions.show', ['question' => $question->getKey()]),
             ],
             'answers' => $answers,
             'acceptedAnswerId' => $acceptedAnswer['id'] ?? null,
-            'related' => $related,
-            'canAnswer' => true,
+            'related' => $relatedQuestions
+                ->map(static fn (Question $item): array => [
+                    'id' => (int) $item->getKey(),
+                    'title' => $item->title,
+                    'score' => (int) ($item->votes_sum_value ?? 0),
+                    'answers_count' => (int) $item->answers_count,
+                    'href' => route('questions.show', ['question' => $item->getKey()]),
+                ])
+                ->values()
+                ->all(),
         ]);
     }
 
-    public function store(
-        StoreQuestionRequest $request,
-        ClassroomAccess $access,
-        PostMediaStore $mediaStore,
-    ): RedirectResponse {
-        /** @var User $user */
-        $user = $request->user();
-
-        /** @var array{scope: string, classroom_id?: int|null, title: string, body: string, tags?: list<string>, media?: array<int, mixed>} $data */
-        $data = $request->validated();
-
-        $attributes = [
-            'user_id' => $user->getKey(),
-            'title' => $data['title'],
-            'body' => $data['body'],
-            'tags' => $data['tags'] ?? [],
-        ];
-
-        if ($data['scope'] === 'community') {
-            $question = Question::query()->create([
-                ...$attributes,
-                'classroom_id' => null,
-                'visibility' => Question::VISIBILITY_COMMUNITY,
-            ]);
-        } else {
-            $classroom = Classroom::query()->findOrFail($data['classroom_id']);
-            $access->assertParticipant($user, $classroom);
-
-            $question = Question::query()->create([
-                ...$attributes,
-                'classroom_id' => $classroom->getKey(),
-                'visibility' => Question::VISIBILITY_CLASSROOM,
-            ]);
-        }
-
-        $mediaStore->attach($question, $data['media'] ?? [], $user);
-
-        return to_route('questions.show', ['question' => $question])
-            ->with(
-                'success',
-                $data['scope'] === 'community'
-                    ? 'Question posted to the community. Anyone signed in can answer and vote.'
-                    : 'Question posted. Your class can answer and vote now.',
-            );
-    }
-
-    public function vote(Request $request, Question $question, ClassroomAccess $access): JsonResponse
+    public function store(StoreQuestionRequest $request, PostMediaStore $mediaStore): RedirectResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        $access->assertQuestionAccess($user, $question);
+        /** @var array{group_id?: int|null, title: string, body: string, tags?: list<string>, media?: array<int, mixed>} $data */
+        $data = $request->validated();
 
-        /** @var array{value: int} $data */
-        $data = $request->validate([
-            'value' => ['required', 'integer', Rule::in([-1, 0, 1])],
+        $groupId = $data['group_id'] ?? null;
+        $group = $groupId === null || $groupId === 0
+            ? null
+            : Group::query()->findOrFail($groupId);
+
+        if ($group === null) {
+            $this->authorize('create', Question::class);
+        } else {
+            $this->authorize('createInGroup', [Question::class, $group]);
+        }
+
+        $post = Question::query()->create([
+            'user_id' => $user->getKey(),
+            'group_id' => $group?->getKey(),
+            'title' => $data['title'],
+            'body' => $data['body'],
+            'tags' => $data['tags'] ?? [],
         ]);
 
-        if ((int) $question->user_id === (int) $user->getKey()) {
-            throw ValidationException::withMessages([
-                'vote' => 'You cannot vote on your own question.',
-            ]);
-        }
+        $mediaStore->attach($post, $data['media'] ?? [], $user);
 
-        $value = (int) $data['value'];
+        return to_route('questions.show', ['question' => $post])
+            ->with('success', $group === null
+                ? 'Posted to the community. Everyone signed in can answer and vote.'
+                : 'Question posted to '.$group->name.'. Members can answer and vote now.');
+    }
 
-        if ($value === 0) {
-            $question->votes()->where('user_id', $user->getKey())->delete();
-        } else {
-            $question->votes()->updateOrCreate(
-                ['user_id' => $user->getKey()],
-                ['value' => $value],
-            );
-        }
+    public function vote(VoteRequest $request, Question $question, VoteCaster $votes): JsonResponse
+    {
+        /** @var User $user */
+        $user = $request->user();
+
+        $this->authorize('vote', $question);
+
+        /** @var array{value: int} $data */
+        $data = $request->validated();
 
         return response()->json([
-            'data' => [
-                'score' => (int) $question->votes()->sum('value'),
-                'vote' => $value,
-            ],
+            'data' => $votes->cast($question, $user, (int) $data['value'], 'question'),
         ]);
     }
 
     /**
-     * Keep semantic hits in the order pgvector returned them.
-     *
      * @param  list<int>  $ids
      */
     private function rankSql(array $ids): string
@@ -446,6 +397,24 @@ class QuestionController extends Controller
     }
 
     /**
+     * @param  list<int>  $myGroupIds
+     * @return callable(Builder): void
+     */
+    private function scopeClosure(string $scope, ?int $groupId, array $myGroupIds): callable
+    {
+        return static function ($query) use ($scope, $groupId, $myGroupIds): void {
+            match ($scope) {
+                'general' => $query->whereNull('group_id'),
+                'group' => $query->where('group_id', $groupId),
+                'mine' => $query->where(static function ($inner) use ($myGroupIds): void {
+                    $inner->whereNull('group_id')->orWhereIn('group_id', $myGroupIds);
+                }),
+                default => null,
+            };
+        };
+    }
+
+    /**
      * @return list<array{id: int, url: string, name: string, mime: string, size: int}>
      */
     private function mediaPayload(Question|Answer $owner): array
@@ -454,13 +423,5 @@ class QuestionController extends Controller
             ->map(static fn (PostMedia $media): array => $media->reference())
             ->values()
             ->all();
-    }
-
-    /** @return Collection<int, Classroom> */
-    private function classroomsFor(User $user, ClassroomAccess $access): Collection
-    {
-        return $user->isInstructor()
-            ? $access->forInstructor($user)
-            : $access->forStudent($user);
     }
 }

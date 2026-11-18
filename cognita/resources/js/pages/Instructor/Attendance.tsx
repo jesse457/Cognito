@@ -109,7 +109,7 @@ export default function InstructorAttendance({ classroom, report, today }: Atten
             </header>
 
             <section className="mt-6 grid gap-3 lg:grid-cols-[280px_1fr]" aria-label="Attendance for one day">
-                <div className="card h-fit p-5">
+                <div className="card h-fit p-4">
                     <div className="flex items-start justify-between gap-3">
                         <h2 className="section-title">Day</h2>
                         <CalendarBlank size={20} className="text-ink-soft" aria-hidden="true" />

@@ -10,7 +10,6 @@ use App\Http\Requests\UpdateUserRoleRequest;
 use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Validation\ValidationException;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -22,6 +21,8 @@ class UserController extends Controller
 {
     public function index(Request $request): Response
     {
+        $this->authorize('viewAny', User::class);
+
         $search = trim((string) $request->query('search', ''));
         $role = (string) $request->query('role', '');
 
@@ -54,14 +55,7 @@ class UserController extends Controller
 
     public function updateRole(UpdateUserRoleRequest $request, User $user): RedirectResponse
     {
-        /** @var User $actor */
-        $actor = $request->user();
-
-        if ((int) $actor->getKey() === (int) $user->getKey()) {
-            throw ValidationException::withMessages([
-                'role' => 'You cannot change your own role.',
-            ]);
-        }
+        $this->authorize('updateRole', $user);
 
         /** @var array{role: string} $data */
         $data = $request->validated();
@@ -73,20 +67,7 @@ class UserController extends Controller
 
     public function destroy(Request $request, User $user): RedirectResponse
     {
-        /** @var User $actor */
-        $actor = $request->user();
-
-        if ((int) $actor->getKey() === (int) $user->getKey()) {
-            throw ValidationException::withMessages([
-                'user' => 'You cannot delete your own account.',
-            ]);
-        }
-
-        if ($user->isAdmin() && User::query()->where('role', UserRole::Admin->value)->count() <= 1) {
-            throw ValidationException::withMessages([
-                'user' => 'The last administrator cannot be deleted.',
-            ]);
-        }
+        $this->authorize('delete', $user);
 
         $user->delete();
 

@@ -74,8 +74,7 @@ export default function InstructorAttendanceOverview({ filters, stats, report }:
 
             <header className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                    <p className="eyebrow">Instructor</p>
-                    <h1 className="page-title mt-1.5">Attendance</h1>
+                    <h1 className="page-title">Attendance</h1>
                     <p className="page-sub">
                         Who turned up across every class on {report.date_label.toLowerCase()}. Open a class register
                         for names, first joined, time in class and the downloads.
@@ -105,7 +104,7 @@ export default function InstructorAttendanceOverview({ filters, stats, report }:
                 </div>
             </header>
 
-            <section aria-label="Attendance at a glance" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section aria-label="Attendance at a glance" className="kpi-row grid-cols-2 xl:grid-cols-4">
                 <Stat
                     label="Present"
                     value={stats.present}
@@ -123,7 +122,7 @@ export default function InstructorAttendanceOverview({ filters, stats, report }:
                 <Stat label="Classes" value={stats.classes} hint="sittings covered by this report" icon={ChartBar} />
             </section>
 
-            <section className="card p-5" aria-labelledby="trend-heading">
+            <section className="card p-4" aria-labelledby="trend-heading">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                         <h2 id="trend-heading" className="section-title">

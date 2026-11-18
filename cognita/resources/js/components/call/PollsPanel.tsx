@@ -47,7 +47,7 @@ function PollResults({ poll }: { poll: PollView }) {
                             </div>
                             <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-stage-ink/10">
                                 <div
-                                    className={cn('h-full rounded-full', mine ? 'bg-brand-soft' : 'bg-stage-ink/35')}
+                                    className={cn('h-full rounded-full', mine ? 'bg-stage-live/70' : 'bg-stage-ink/35')}
                                     style={{ width: `${percent}%` }}
                                 />
                             </div>

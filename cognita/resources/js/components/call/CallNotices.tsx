@@ -16,11 +16,11 @@ const TONE = {
     },
     warn: {
         icon: Warning,
-        className: 'border-warn/35 bg-warn/10 text-warn',
+        className: 'border-stage-warn/35 bg-stage-warn/10 text-stage-warn',
     },
     error: {
         icon: WarningCircle,
-        className: 'border-danger/40 bg-danger/10 text-danger',
+        className: 'border-stage-danger/40 bg-stage-danger/10 text-stage-danger',
     },
 } as const;
 

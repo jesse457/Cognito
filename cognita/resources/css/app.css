@@ -1,6 +1,5 @@
-@import '@fontsource-variable/hanken-grotesk';
-@import '@fontsource/ibm-plex-mono/400.css';
-@import '@fontsource/ibm-plex-mono/600.css';
+@import '@fontsource-variable/geist';
+@import '@fontsource-variable/geist-mono';
 @import 'tailwindcss';
 
 @source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
@@ -13,121 +12,135 @@
 |--------------------------------------------------------------------------
 | Cognita design tokens
 |--------------------------------------------------------------------------
-| A warm, scholarly product surface: parchment neutrals, pine green action,
-| and amber reserved for the instructor desk. The live call uses the same
-| theme rather than a permanent dark stage; the stage tokens simply swap
-| alongside the rest of the product in dark mode.
+| A studio tool, not a brochure: cool graphite neutrals, one cobalt accent,
+| hairline rules instead of boxed cards, and monospace for anything that is
+| measured (keys, counts, clocks). Everything, including the live call stage,
+| follows the system theme; the stage has its own tokens so the room keeps its
+| identity in both light and dark. The board itself stays a sheet of paper.
 |
-| One accent (pine), one instructor accent (amber), one neutral family
-| (warm grey), one radius system: containers 16px, tiles 14px, inputs 12px,
-| controls full pill.
+| One accent (cobalt), one mentor accent (violet, instructor surfaces only),
+| one neutral family (cool graphite), one radius scale:
+| controls 8px, inputs 8px, cards 12px, panels 14px, pills for chips only.
 |
 */
 @theme {
-    --font-sans: 'Hanken Grotesk Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --font-sans: 'Geist Variable', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
-    --color-canvas: #f3efe6;
-    --color-surface: #fbf9f4;
-    --color-surface-sunken: #eae3d7;
-    --color-ink: #1b211d;
-    --color-ink-muted: #5f675f;
-    --color-ink-soft: #858c83;
-    --color-line: #ded7c9;
-    --color-line-strong: #c9bfae;
+    --color-canvas: #f1f3f7;
+    --color-surface: #ffffff;
+    --color-surface-sunken: #eaedf2;
+    --color-ink: #0b0d12;
+    --color-ink-muted: #4c5563;
+    --color-ink-soft: #6e7787;
+    --color-line: #e3e6ec;
+    --color-line-strong: #ccd2dc;
 
-    --color-brand: #1e5b48;
-    --color-brand-strong: #154435;
-    --color-brand-soft: #e1ece5;
-    --color-brand-ink: #fdfbf6;
+    --color-brand: #1f4ae0;
+    --color-brand-strong: #173ab4;
+    --color-brand-soft: #e8edfd;
+    --color-brand-ink: #ffffff;
 
-    --color-live: #2f7d4f;
-    --color-live-soft: #e3f0e7;
+    --color-live: #0d8a52;
+    --color-live-soft: #dff4ea;
     --color-live-ink: #ffffff;
-    --color-warn: #8a5a12;
-    --color-warn-soft: #f6ead1;
-    --color-danger: #a43a2f;
-    --color-danger-soft: #f7e6e2;
+    --color-warn: #8d5607;
+    --color-warn-soft: #fbefda;
+    --color-danger: #c0392b;
+    --color-danger-soft: #fbeae8;
     --color-danger-ink: #ffffff;
 
-    /* The instructor surface is deliberately warmer than the student one. */
-    --color-mentor: #9a5b1e;
-    --color-mentor-soft: #f4e7d6;
+    /* Instructor-only surfaces read as a distinct desk, not another tab. */
+    --color-mentor: #6b4ee6;
+    --color-mentor-soft: #ece9fd;
 
-    /* Stage tokens are the live-call surface, not a hard-coded dark mode. */
-    --color-stage: #e8e2d6;
-    --color-stage-raised: #f7f3ea;
-    --color-stage-line: #d3cabc;
-    --color-stage-ink: #1b211d;
-    --color-stage-live: #1f6b3f;
-    --color-stage-warn: #8a5a12;
-    --color-stage-danger: #a43a2f;
+    /* The stage is the room with the cameras in it: lighter than the product
+       in light mode, darker in dark mode, but never a separate theme. */
+    --color-stage: #e7ebf2;
+    --color-stage-raised: #ffffff;
+    --color-stage-line: #d2d9e4;
+    --color-stage-ink: #0b0d12;
+    --color-stage-live: #0d8a52;
+    --color-stage-warn: #8d5607;
+    --color-stage-danger: #c0392b;
 
-    --shadow-card: 0 1px 2px rgb(27 33 29 / 0.04);
-    --shadow-float: 0 18px 50px rgb(27 33 29 / 0.16);
-    --shadow-stage: 0 24px 80px rgb(27 33 29 / 0.18);
+    --shadow-card: 0 1px 2px rgb(11 13 18 / 0.04);
+    --shadow-brand: 0 1px 2px rgb(31 74 224 / 0.3);
+    --shadow-float: 0 16px 40px -12px rgb(11 13 18 / 0.22), 0 1px 2px rgb(11 13 18 / 0.06);
+    --shadow-stage: 0 28px 70px -24px rgb(11 13 18 / 0.32);
 
-    --radius-container: 1rem;
-    --radius-tile: 0.875rem;
-    --radius-input: 0.75rem;
+    --radius-container: 0.875rem;
+    --radius-tile: 0.75rem;
+    --radius-input: 0.5rem;
+
+    /*
+    | Tailwind's radius scale is rescaled to the same rule, so a utility
+    | rounded-lg, rounded-xl or rounded-2xl means exactly what the component
+    | classes mean.
+    */
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.625rem;
+    --radius-2xl: 0.75rem;
+    --radius-3xl: 0.875rem;
 }
 
 html.dark {
     color-scheme: dark;
 
-    --color-canvas: #0f1411;
-    --color-surface: #161c18;
-    --color-surface-sunken: #1e2621;
-    --color-ink: #f1eee6;
-    --color-ink-muted: #a6afa6;
-    --color-ink-soft: #7d877e;
-    --color-line: #2a342d;
-    --color-line-strong: #3b473e;
+    --color-canvas: #0a0c11;
+    --color-surface: #11141a;
+    --color-surface-sunken: #171b23;
+    --color-ink: #eceef3;
+    --color-ink-muted: #a2aab8;
+    --color-ink-soft: #7b8391;
+    --color-line: #22262f;
+    --color-line-strong: #333947;
 
-    --color-brand: #9ad6b7;
-    --color-brand-strong: #b9e8cd;
-    --color-brand-soft: #20362b;
-    --color-brand-ink: #0d1a13;
+    --color-brand: #7d9bff;
+    --color-brand-strong: #9db3ff;
+    --color-brand-soft: #1a2140;
+    --color-brand-ink: #0a1024;
 
-    --color-live: #6cc78f;
-    --color-live-soft: #1b3325;
-    --color-live-ink: #0d1a13;
-    --color-warn: #e3b970;
-    --color-warn-soft: #362c17;
-    --color-danger: #f09388;
-    --color-danger-soft: #3a211d;
-    --color-danger-ink: #2a0e0b;
+    --color-live: #3ecf95;
+    --color-live-soft: #10261c;
+    --color-live-ink: #04140c;
+    --color-warn: #e3b45f;
+    --color-warn-soft: #2a2314;
+    --color-danger: #ff8f82;
+    --color-danger-soft: #2e1714;
+    --color-danger-ink: #2a0b08;
 
-    --color-mentor: #e2b574;
-    --color-mentor-soft: #362b18;
+    --color-mentor: #a78bfa;
+    --color-mentor-soft: #221c3a;
 
-    --color-stage: #0c110e;
-    --color-stage-raised: #161d18;
-    --color-stage-line: #2a352d;
-    --color-stage-ink: #f3f0e8;
-    --color-stage-live: #92e0af;
-    --color-stage-warn: #f0c87d;
-    --color-stage-danger: #ffb5ac;
+    --color-stage: #0a0c11;
+    --color-stage-raised: #13171f;
+    --color-stage-line: #242a36;
+    --color-stage-ink: #e9ecf2;
+    --color-stage-live: #35c88a;
+    --color-stage-warn: #e7b457;
+    --color-stage-danger: #ff8f82;
 
-    --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03) inset;
-    --shadow-float: 0 18px 50px rgb(0 0 0 / 0.45);
-    --shadow-stage: 0 24px 80px rgb(0 0 0 / 0.5);
+    --shadow-card: 0 1px 0 rgb(255 255 255 / 0.03);
+    --shadow-brand: 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-float: 0 16px 40px -12px rgb(0 0 0 / 0.7), 0 1px 2px rgb(0 0 0 / 0.4);
+    --shadow-stage: 0 28px 80px -20px rgb(0 0 0 / 0.7);
 }
 
 /* The board is always a sheet of paper, even when the app is dark. */
 .board-paper {
-    --color-canvas: #f3efe6;
+    --color-canvas: #f4f5f7;
     --color-surface: #ffffff;
-    --color-surface-sunken: #eae3d7;
-    --color-ink: #1b211d;
-    --color-ink-muted: #5f675f;
-    --color-ink-soft: #858c83;
-    --color-line: #ded7c9;
-    --color-line-strong: #c9bfae;
-    --color-brand: #1e5b48;
-    --color-brand-strong: #154435;
-    --color-brand-soft: #e1ece5;
-    --color-brand-ink: #fdfbf6;
+    --color-surface-sunken: #eaedf2;
+    --color-ink: #0b0d12;
+    --color-ink-muted: #4c5563;
+    --color-ink-soft: #6e7787;
+    --color-line: #e3e6ec;
+    --color-line-strong: #ccd2dc;
+    --color-brand: #1f4ae0;
+    --color-brand-strong: #173ab4;
+    --color-brand-soft: #e8edfd;
+    --color-brand-ink: #ffffff;
 }
 
 @layer base {
@@ -140,10 +153,6 @@ html.dark {
 
     body {
         @apply bg-canvas text-ink;
-        background-image:
-            radial-gradient(1100px 620px at 8% -12%, color-mix(in srgb, var(--color-brand) 10%, transparent), transparent 62%),
-            radial-gradient(900px 520px at 100% -4%, color-mix(in srgb, var(--color-mentor) 7%, transparent), transparent 58%);
-        background-attachment: fixed;
     }
 
     ::selection {
@@ -154,7 +163,7 @@ html.dark {
     h1,
     h2,
     h3 {
-        @apply tracking-tight text-ink;
+        @apply tracking-[-0.02em] text-ink;
         text-wrap: balance;
     }
 
@@ -187,11 +196,11 @@ html.dark {
 @layer components {
     /* --- Shell --------------------------------------------------------- */
     .appbar {
-        @apply sticky top-0 z-30 flex h-16 items-center gap-4 border-b border-line bg-surface/95 px-4 backdrop-blur-md sm:px-6;
+        @apply sticky top-0 z-30 flex h-14 items-center gap-4 border-b border-line bg-surface/90 px-4 backdrop-blur-md sm:px-6;
     }
 
     .page {
-        @apply mx-auto w-full max-w-[1200px] px-4 py-8 sm:px-6 lg:py-10;
+        @apply mx-auto w-full max-w-[1320px] px-4 py-8 sm:px-6 lg:py-10;
     }
 
     .nav-tabs {
@@ -199,70 +208,90 @@ html.dark {
     }
 
     .nav-tab {
-        @apply flex items-center gap-2 rounded-full px-3.5 py-2.5 text-sm font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink sm:py-2;
+        @apply flex items-center gap-2 rounded-lg px-3 py-1.5 text-[13px] font-medium whitespace-nowrap text-ink-muted transition-colors hover:bg-surface-sunken hover:text-ink;
     }
 
     .nav-tab-active {
-        @apply bg-brand-soft text-brand hover:bg-brand-soft hover:text-brand;
+        @apply bg-surface-sunken text-ink;
     }
 
     .brand-mark {
-        @apply flex h-9 w-9 items-center justify-center rounded-[11px] bg-brand text-[15px] font-semibold text-brand-ink shadow-[0_6px_18px_rgb(30_91_72_/_0.18)];
+        @apply flex h-8 w-8 items-center justify-center rounded-[9px] bg-ink text-[13px] font-semibold text-canvas;
     }
 
     /* --- Type ---------------------------------------------------------- */
     .page-title {
-        @apply text-[27px] leading-[1.08] font-semibold tracking-[-0.02em] text-ink sm:text-[32px];
+        @apply text-[26px] leading-[1.12] font-semibold tracking-[-0.03em] text-ink sm:text-[30px];
     }
 
     .page-sub {
-        @apply mt-1.5 max-w-[62ch] text-sm leading-relaxed text-ink-muted;
+        @apply mt-2 max-w-[62ch] text-[13.5px] leading-relaxed text-ink-muted;
     }
 
     .section-title {
-        @apply text-[15px] font-semibold text-ink;
+        @apply text-[13.5px] font-semibold tracking-[-0.01em] text-ink;
     }
 
+    /* A small label, not a shout. No uppercase, no wide tracking. */
     .eyebrow {
-        @apply text-[10.5px] font-semibold tracking-[0.16em] text-ink-soft uppercase;
+        @apply text-[11.5px] leading-tight font-medium text-ink-soft;
+    }
+
+    /* Measured things — keys, counts, clocks — are set in mono. */
+    .mono {
+        @apply font-mono tracking-[-0.01em];
     }
 
     .meta {
-        @apply text-xs text-ink-muted;
+        @apply text-[12px] text-ink-muted;
     }
 
     /* --- Surfaces ------------------------------------------------------ */
     .card {
-        @apply rounded-2xl border border-line/80 bg-surface shadow-card;
+        @apply rounded-xl border border-line bg-surface;
     }
 
     .card-pad {
-        @apply px-5 py-4 sm:px-6;
+        @apply px-5 py-4;
     }
 
     .card-head {
-        @apply flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4 sm:px-6;
+        @apply flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4;
+    }
+
+    /*
+    | The metric strip. Four numbers, one rule between them, no boxes: the
+    | dividers come from a 1px grid gap over a line-coloured background, so
+    | they survive any column count without stray borders.
+    */
+    .kpi-row {
+        @apply grid gap-px overflow-hidden rounded-xl border border-line bg-line;
     }
 
     .stat {
-        @apply rounded-2xl border border-line/80 bg-surface px-5 py-4 shadow-card;
+        @apply flex flex-col gap-1.5 bg-surface px-5 py-4;
     }
 
     .stat-value {
-        @apply mt-1 text-2xl font-semibold tracking-tight text-ink;
+        @apply text-[26px] leading-none font-semibold tracking-[-0.03em] text-ink tabular-nums;
     }
 
     /* --- Controls ------------------------------------------------------ */
     .btn {
-        @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2 text-sm font-medium transition duration-150 ease-out select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:translate-y-px disabled:pointer-events-none disabled:opacity-50;
+        @apply inline-flex h-9 items-center justify-center gap-2 rounded-lg px-3.5 text-[13px] font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 ease-out select-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:translate-y-px disabled:pointer-events-none disabled:opacity-50;
     }
 
     .btn-primary {
-        @apply bg-brand text-brand-ink hover:bg-brand-strong;
+        @apply bg-brand text-brand-ink shadow-brand hover:bg-brand-strong;
+    }
+
+    /* A disabled primary action should not shout: it steps back to a surface. */
+    .btn-primary:disabled {
+        @apply bg-surface-sunken text-ink-soft shadow-none;
     }
 
     .btn-tonal {
-        @apply bg-brand-soft text-brand hover:bg-brand-soft/70;
+        @apply bg-brand-soft text-brand hover:brightness-95 dark:hover:brightness-110;
     }
 
     .btn-outline {
@@ -278,32 +307,32 @@ html.dark {
     }
 
     .btn-sm {
-        @apply gap-1.5 px-3 py-2.5 text-[13px] sm:py-1.5;
+        @apply h-8 gap-1.5 px-2.5 text-[12.5px];
     }
 
     .btn-icon {
-        @apply h-10 w-10 rounded-full px-0;
+        @apply h-9 w-9 px-0;
     }
 
     .label {
-        @apply mb-1.5 block text-[13px] font-medium text-ink;
+        @apply mb-1.5 block text-[12.5px] font-medium text-ink;
     }
 
     .input {
         /* 16px on phones: below that iOS zooms the viewport on focus. */
-        @apply w-full rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-base text-ink transition placeholder:text-ink-soft focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none sm:text-sm;
+        @apply min-h-9 w-full rounded-lg border border-line bg-surface px-3 py-2 text-[16px] text-ink transition placeholder:text-ink-soft focus:border-brand focus:ring-2 focus:ring-brand/15 focus:outline-none sm:text-[13.5px];
     }
 
     .input-key {
-        @apply font-mono text-base tracking-[0.24em] uppercase;
+        @apply font-mono text-[16px] tracking-[0.2em] uppercase sm:text-[14px];
     }
 
     .select-trigger {
-        @apply flex w-full items-center justify-between gap-2 rounded-xl border border-line-strong bg-surface px-3.5 py-2.5 text-left text-base text-ink transition placeholder:text-ink-soft hover:border-ink-soft/50 focus:border-brand focus:ring-2 focus:ring-brand/20 focus:outline-none disabled:pointer-events-none disabled:opacity-50 sm:text-sm;
+        @apply flex min-h-9 w-full items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-left text-[16px] text-ink transition placeholder:text-ink-soft hover:border-line-strong focus:border-brand focus:ring-2 focus:ring-brand/15 focus:outline-none disabled:pointer-events-none disabled:opacity-50 sm:text-[13.5px];
     }
 
     .select-trigger-sm {
-        @apply gap-1.5 rounded-lg px-2.5 py-1 text-xs;
+        @apply min-h-7 gap-1.5 rounded-md px-2 py-0.5 text-[11.5px];
     }
 
     .select-trigger-invalid {
@@ -311,16 +340,16 @@ html.dark {
     }
 
     .select-trigger-open {
-        @apply border-brand ring-2 ring-brand/20;
+        @apply border-brand ring-2 ring-brand/15;
     }
 
     .select-menu {
-        @apply fixed z-[80] max-h-72 overflow-y-auto overscroll-contain rounded-xl border border-line bg-surface p-1.5 shadow-[0_18px_48px_rgba(25,28,32,0.16)];
+        @apply fixed z-[80] max-h-72 overflow-y-auto overscroll-contain rounded-lg border border-line bg-surface p-1 shadow-float;
         animation: select-in 140ms cubic-bezier(0.2, 0, 0, 1);
     }
 
     .select-option {
-        @apply flex cursor-pointer items-center justify-between gap-3 rounded-lg px-2.5 py-2 text-sm text-ink transition-colors duration-100;
+        @apply flex cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-1.5 text-[13px] text-ink transition-colors duration-100;
     }
 
     .select-option-active {
@@ -332,16 +361,16 @@ html.dark {
     }
 
     .hint {
-        @apply mt-1.5 text-xs text-ink-muted;
+        @apply mt-1.5 text-[12px] text-ink-muted;
     }
 
     .error {
-        @apply mt-1.5 text-xs font-medium text-danger;
+        @apply mt-1.5 text-[12px] font-medium text-danger;
     }
 
     /* --- Chips & badges ------------------------------------------------ */
     .chip {
-        @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide;
+        @apply inline-flex items-center gap-1.5 rounded-md px-2 py-0.5 text-[11px] font-medium whitespace-nowrap;
     }
 
     .chip-neutral {
@@ -358,19 +387,19 @@ html.dark {
 
     /* Badges that sit on the dark call stage rather than the light product surface. */
     .stage-chip {
-        @apply inline-flex items-center gap-1.5 rounded-full bg-stage-ink/10 px-2.5 py-1 text-[11px] font-semibold text-stage-ink/80;
+        @apply inline-flex items-center gap-1.5 rounded-md bg-stage-ink/10 px-2 py-0.5 text-[11px] font-medium text-stage-ink/80;
     }
 
     .stage-chip-live {
-        @apply bg-live/15 text-stage-live;
+        @apply bg-stage-live/15 text-stage-live;
     }
 
     .stage-chip-warn {
-        @apply bg-warn/15 text-stage-warn;
+        @apply bg-stage-warn/15 text-stage-warn;
     }
 
     .stage-chip-rec {
-        @apply bg-danger/15 text-stage-danger;
+        @apply bg-stage-danger/15 text-stage-danger;
     }
 
     .chip-warn {
@@ -388,12 +417,12 @@ html.dark {
 
     /* Question tags: small, scannable and deliberately lighter than a chip. */
     .tag {
-        @apply inline-flex items-center gap-1 rounded-md bg-brand-soft px-2 py-0.5 text-[11px] font-semibold text-brand;
+        @apply inline-flex items-center gap-1 rounded-[5px] bg-brand-soft px-1.5 py-0.5 text-[11px] font-medium text-brand;
     }
 
     /* The join key is a first-class object: monospace, spaced, copyable. */
     .key-chip {
-        @apply inline-flex items-center gap-2 rounded-xl border border-line bg-surface-sunken px-3 py-1.5 font-mono text-sm font-semibold tracking-[0.22em] text-ink;
+        @apply inline-flex items-center gap-2 rounded-lg border border-line bg-surface-sunken px-2.5 py-1 font-mono text-[13px] font-semibold tracking-[0.18em] text-ink;
     }
 
     /* --- Tables -------------------------------------------------------- */
@@ -402,15 +431,15 @@ html.dark {
     }
 
     .table {
-        @apply w-full border-collapse text-sm;
+        @apply w-full border-collapse text-[13px];
     }
 
     .th {
-        @apply border-b border-line px-4 py-2.5 text-left text-[11px] font-semibold tracking-[0.08em] text-ink-soft uppercase;
+        @apply border-b border-line px-4 py-2.5 text-left text-[11px] font-medium tracking-[0.04em] text-ink-soft uppercase;
     }
 
     .td {
-        @apply border-b border-line/70 px-4 py-3 align-middle text-ink-muted;
+        @apply border-b border-line/70 px-4 py-2.5 align-middle text-ink-muted;
     }
 
     .row-hover {
@@ -437,23 +466,23 @@ html.dark {
     }
 
     .call-tile {
-        @apply relative flex min-h-[132px] flex-col items-center justify-center overflow-hidden rounded-[14px] border border-stage-line bg-stage-raised transition-colors duration-200;
+        @apply relative flex min-h-[132px] flex-col items-center justify-center overflow-hidden rounded-xl border border-stage-line bg-stage-raised transition-colors duration-200;
     }
 
     .call-tile-speaking {
-        @apply border-live/70 ring-2 ring-live/30;
+        @apply border-stage-live/70 ring-2 ring-stage-live/25;
     }
 
     .call-name {
-        @apply truncate rounded-md bg-black/45 px-1.5 py-0.5 text-[11px] font-medium text-white/90;
+        @apply truncate rounded-md bg-stage-ink/75 px-1.5 py-0.5 text-[11px] font-medium text-stage/90;
     }
 
     .callbar {
-        @apply flex flex-wrap items-center justify-center gap-2 rounded-full border border-stage-line bg-stage-raised/95 px-2.5 py-2 shadow-float backdrop-blur;
+        @apply flex flex-wrap items-center justify-center gap-1.5 rounded-full border border-stage-line bg-stage-raised/90 px-2 py-1.5 shadow-stage backdrop-blur;
     }
 
     .call-control {
-        @apply inline-flex h-11 min-w-11 items-center justify-center gap-2 rounded-full px-3.5 text-[13px] font-medium text-stage-ink/85 transition duration-150 hover:bg-stage-ink/10 hover:text-stage-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stage-ink/70 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40;
+        @apply inline-flex h-10 min-w-10 items-center justify-center gap-2 rounded-full px-3 text-[12.5px] font-medium text-stage-ink/80 transition duration-150 hover:bg-stage-ink/10 hover:text-stage-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stage-ink/70 active:scale-[0.97] disabled:pointer-events-none disabled:opacity-40;
     }
 
     .call-control-on {
@@ -461,11 +490,11 @@ html.dark {
     }
 
     .call-control-live {
-        @apply bg-stage-ink/12 text-stage-ink;
+        @apply bg-stage-live/15 text-stage-live;
     }
 
     .call-control-danger {
-        @apply bg-danger text-danger-ink hover:bg-danger/90;
+        @apply bg-stage-danger text-stage hover:bg-stage-danger/90;
     }
 
     .call-panel {
@@ -473,7 +502,7 @@ html.dark {
     }
 
     .call-panel-item {
-        @apply flex items-center gap-2.5 rounded-xl px-2.5 py-2 text-sm text-stage-ink/85;
+        @apply flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-[13px] text-stage-ink/80;
     }
 
     /* Fullscreen board: the native Fullscreen API when the browser has it, a
@@ -484,16 +513,16 @@ html.dark {
     }
 
     .board-surface {
-        @apply relative mx-auto w-full overflow-hidden rounded-[14px] bg-white shadow-stage;
+        @apply relative mx-auto w-full overflow-hidden rounded-xl bg-white shadow-stage;
     }
 
     /* --- Misc ---------------------------------------------------------- */
     .empty {
-        @apply flex flex-col items-center justify-center gap-2 px-6 py-14 text-center;
+        @apply flex flex-col items-center justify-center gap-1.5 px-6 py-12 text-center;
     }
 
     .flash {
-        @apply flex items-start gap-2 rounded-xl border px-4 py-3 text-sm;
+        @apply flex items-start gap-2.5 rounded-lg border px-3.5 py-2.5 text-[13px];
     }
 
     .flash-success {
@@ -514,7 +543,7 @@ html.dark {
 
     /* --- Board toolbar ------------------------------------------------- */
     .board-toolbar {
-        @apply shrink-0 rounded-2xl border border-stage-line bg-stage-raised/90 p-2;
+        @apply shrink-0 rounded-xl border border-stage-line bg-stage-raised/90 p-1.5;
     }
 
     .surface-tab {
@@ -526,7 +555,7 @@ html.dark {
     }
 
     .tool-button {
-        @apply inline-flex h-9 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-stage-ink/70 transition duration-150 hover:bg-stage-ink/10 hover:text-stage-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stage-ink/70 active:scale-[0.98];
+        @apply inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-medium text-stage-ink/70 transition duration-150 hover:bg-stage-ink/10 hover:text-stage-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stage-ink/70 active:scale-[0.97];
     }
 
     .tool-button-active {
@@ -534,17 +563,34 @@ html.dark {
     }
 
     .pdf-library {
-        @apply absolute top-11 left-0 z-40 w-[280px] rounded-2xl border border-stage-line bg-stage-raised p-1.5 shadow-stage;
+        @apply absolute top-11 left-0 z-40 w-[280px] rounded-xl border border-stage-line bg-stage-raised p-1.5 shadow-stage;
     }
 
     /* --- Live call lobby ---------------------------------------------- */
     .join-button {
-        @apply inline-flex h-12 items-center justify-center gap-2 rounded-full bg-brand px-5 text-sm font-semibold text-brand-ink transition duration-150 hover:bg-brand-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:scale-[0.99] disabled:pointer-events-none disabled:opacity-70;
+        @apply inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-brand px-4 text-[13px] font-semibold text-brand-ink transition duration-150 hover:bg-brand-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:translate-y-px disabled:pointer-events-none disabled:opacity-70;
     }
 
     .live-dot {
         @apply inline-block h-1.5 w-1.5 rounded-full bg-current;
         animation: live-pulse 1.8s ease-in-out infinite;
+    }
+
+    /* --- Guest / marketing surfaces ------------------------------------ */
+    /*
+    | The join screen is the one page that gets a surface of its own: a sheet
+    | of graph paper, because this product is about a board.
+    */
+    .graph-paper {
+        background-image:
+            linear-gradient(to right, color-mix(in srgb, var(--color-line) 70%, transparent) 1px, transparent 1px),
+            linear-gradient(to bottom, color-mix(in srgb, var(--color-line) 70%, transparent) 1px, transparent 1px);
+        background-size: 28px 28px;
+    }
+
+    /* A hairline list: rows separated by a rule, not by boxes. */
+    .rule-list {
+        @apply divide-y divide-line border-y border-line;
     }
 }
 
@@ -669,6 +715,34 @@ html.dark {
     }
 }
 
+/* The toast's icon arrives: a small overshoot, then a halo that fades out. */
+@keyframes toast-icon-in {
+    0% {
+        opacity: 0;
+        transform: scale(0.35) rotate(-24deg);
+    }
+    60% {
+        opacity: 1;
+        transform: scale(1.18) rotate(5deg);
+    }
+    100% {
+        opacity: 1;
+        transform: scale(1) rotate(0deg);
+    }
+}
+
+@keyframes toast-halo-out {
+    0% {
+        opacity: 0.7;
+        transform: scale(0.6);
+    }
+    70%,
+    100% {
+        opacity: 0;
+        transform: scale(2);
+    }
+}
+
 @keyframes live-pulse {
     0%,
     100% {
@@ -682,15 +756,23 @@ html.dark {
 @keyframes speaking-glow {
     0%,
     100% {
-        box-shadow: 0 0 0 0 rgb(26 127 60 / 0.45);
+        box-shadow: 0 0 0 0 rgb(53 200 138 / 0.45);
     }
     50% {
-        box-shadow: 0 0 0 4px rgb(26 127 60 / 0.12);
+        box-shadow: 0 0 0 4px rgb(53 200 138 / 0.12);
     }
 }
 
 .toast-in {
-    animation: toast-in 180ms cubic-bezier(0.2, 0, 0, 1);
+    animation: toast-in 220ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.toast-icon {
+    animation: toast-icon-in 420ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+.toast-halo {
+    animation: toast-halo-out 900ms cubic-bezier(0.2, 0, 0, 1);
 }
 
 .dialog-in {

@@ -5,7 +5,7 @@ import {
     CalendarCheck,
     ChalkboardTeacher,
     FilePdf,
-    MagnifyingGlass,
+    LockSimple,
     Microphone,
     Users,
 } from '@phosphor-icons/react';
@@ -14,10 +14,13 @@ import type { FormEvent } from 'react';
 import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import KeyChip from '@/components/ui/KeyChip';
+import SearchInput from '@/components/ui/SearchInput';
 import Select from '@/components/ui/Select';
 import Stat from '@/components/ui/Stat';
+import LiveChip from '@/components/ui/LiveChip';
 import { routes } from '@/lib/routes';
 import { cn, pluralize } from '@/lib/utils';
+import type { PaymentState } from '@/types';
 
 interface ClassroomCard {
     id: number;
@@ -32,6 +35,7 @@ interface ClassroomCard {
     time_in_class: string;
     days: number;
     materials: number;
+    payment: PaymentState;
     call_url: string;
     class_url: string;
 }
@@ -83,15 +87,14 @@ export default function StudentClassrooms({ filters, stats, courses, classrooms 
             <Head title="My classes" />
 
             <header>
-                <p className="eyebrow">Student</p>
-                <h1 className="page-title mt-1.5">My classes</h1>
+                <h1 className="page-title">My classes</h1>
                 <p className="page-sub">
                     Search the classes you joined with a key, open one for its attendance and materials, or jump
                     straight into a live room.
                 </p>
             </header>
 
-            <section aria-label="Classes at a glance" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section aria-label="Classes at a glance" className="kpi-row grid-cols-2 xl:grid-cols-4">
                 <Stat label="Classes" value={stats.classes} hint="joined with a key" icon={ChalkboardTeacher} />
                 <Stat
                     label="Live now"
@@ -105,23 +108,14 @@ export default function StudentClassrooms({ filters, stats, courses, classrooms 
             </section>
 
             <form onSubmit={submit} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
-                <label className="flex-1">
-                    <span className="label">Search</span>
-                    <span className="relative block">
-                        <MagnifyingGlass
-                            size={16}
-                            className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-ink-soft"
-                            aria-hidden="true"
-                        />
-                        <input
-                            value={q}
-                            onChange={(event) => setQ(event.target.value)}
-                            className="input pl-10"
-                            placeholder="Class, course, instructor or key"
-                            aria-label="Search classes"
-                        />
-                    </span>
-                </label>
+                <SearchInput
+                    className="flex-1"
+                    label="Search"
+                    value={q}
+                    onChange={setQ}
+                    placeholder="Class, course, instructor or key"
+                    ariaLabel="Search classes"
+                />
 
                 <label className="sm:w-[220px]">
                     <span className="label">Course</span>
@@ -166,7 +160,7 @@ export default function StudentClassrooms({ filters, stats, courses, classrooms 
             <section aria-labelledby="class-list-heading" className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 id="class-list-heading" className="section-title">
-                        {filtering ? `${pluralize(classrooms.length, 'match', 'matches')}` : 'All your classes'}
+                        {filtering ? `${pluralize(classrooms.length, 'match')}` : 'All your classes'}
                     </h2>
                     <p className="meta">Each class is one group call and one board.</p>
                 </div>
@@ -199,30 +193,33 @@ export default function StudentClassrooms({ filters, stats, courses, classrooms 
                             <li
                                 key={classroom.id}
                                 className={cn(
-                                    'card flex flex-col gap-4 p-5 transition hover:border-line-strong',
-                                    classroom.live && 'border-live/40',
+                                    'card flex flex-col gap-3.5 p-4 transition hover:border-line-strong',
+                                    classroom.live && 'border-live/30',
                                 )}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="eyebrow truncate">{classroom.course ?? 'Class'}</p>
-                                        <h3 className="mt-1.5 truncate text-[15px] font-semibold">
+                                        <h3 className="truncate text-[14px] font-semibold tracking-[-0.01em]">
                                             <Link href={classroom.class_url} className="hover:text-brand">
                                                 {classroom.name}
                                             </Link>
                                         </h3>
+                                        <p className="meta mt-0.5 truncate">{classroom.course ?? 'Class'}</p>
                                         <p className="meta mt-1 truncate">
                                             {classroom.instructor ?? 'Instructor'} ·{' '}
                                             {pluralize(classroom.members, 'member')}
                                         </p>
                                     </div>
 
-                                    {classroom.live ? (
-                                        <span className="chip chip-live shrink-0">
-                                            <span className="live-dot" aria-hidden="true" />
-                                            Live
-                                        </span>
-                                    ) : null}
+                                    <div className="flex shrink-0 flex-col items-end gap-1.5">
+                                        {classroom.live ? <LiveChip label="Live" /> : null}
+                                        {classroom.payment.required && !classroom.payment.can_access ? (
+                                            <span className="chip chip-brand">
+                                                <LockSimple size={12} aria-hidden="true" />
+                                                {classroom.payment.price_label}
+                                            </span>
+                                        ) : null}
+                                    </div>
                                 </div>
 
                                 <dl className="grid grid-cols-3 gap-2 rounded-xl border border-line bg-surface-sunken/60 p-3 text-center">
@@ -269,7 +266,11 @@ export default function StudentClassrooms({ filters, stats, courses, classrooms 
                                             className={cn('btn btn-sm', classroom.live ? 'btn-primary' : 'btn-quiet')}
                                         >
                                             <Microphone size={15} weight="duotone" aria-hidden="true" />
-                                            {classroom.live ? 'Join call' : 'Open call'}
+                                            {classroom.payment.required && !classroom.payment.can_access
+                                                ? 'Pay to join'
+                                                : classroom.live
+                                                  ? 'Join call'
+                                                  : 'Open call'}
                                         </Link>
                                     </div>
                                 </div>

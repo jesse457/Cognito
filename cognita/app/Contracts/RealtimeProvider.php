@@ -18,8 +18,8 @@ use Illuminate\Http\Request;
  * Swapping LiveKit for Jitsi, Daily, a WebRTC SFU of your own or a plain
  * BroadcastChannel in development is then two steps:
  *
- *   1. write a class that implements this interface (see app/Realtime),
- *   2. name it in config/realtime.php.
+ *   1. write a class that implements this interface (see app/Services),
+ *   2. name it in config/services.php, under services.realtime.drivers.
  */
 interface RealtimeProvider
 {

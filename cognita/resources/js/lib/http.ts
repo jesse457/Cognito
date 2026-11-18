@@ -35,17 +35,6 @@ export async function requestData<T>(url: string, init: JsonRequest = {}): Promi
     return payload.data;
 }
 
-/** Fetch JSON without an envelope: the health report and other plain replies. */
-export async function requestJson<T>(url: string, init: JsonRequest = {}): Promise<T> {
-    const response = await send(url, init);
-
-    if (!response.ok) {
-        throw new ApiError(await describeError(response), response.status);
-    }
-
-    return (await response.json()) as T;
-}
-
 /** Best-effort request for pings and heartbeats: failures are not the user's problem. */
 export async function sendQuietly(url: string, init: JsonRequest = {}): Promise<void> {
     try {
@@ -104,12 +93,14 @@ async function send(url: string, init: JsonRequest): Promise<Response> {
 }
 
 async function describeError(response: Response): Promise<string> {
+    const fallback = `That did not work (${response.status}).`;
+
     try {
         const body = (await response.json()) as { message?: string; errors?: Record<string, string[]> };
         const first = body.errors ? Object.values(body.errors)[0]?.[0] : undefined;
 
-        return first ?? body.message ?? `That did not work (${response.status}).`;
+        return first ?? body.message ?? fallback;
     } catch {
-        return `That did not work (${response.status}).`;
+        return fallback;
     }
 }

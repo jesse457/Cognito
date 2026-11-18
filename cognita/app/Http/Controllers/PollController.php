@@ -11,10 +11,10 @@ use App\Models\Poll;
 use App\Models\PollResponse;
 use App\Models\User;
 use App\Services\BoardSessions;
-use App\Services\ClassroomAccess;
 use App\Support\HumanTime;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
@@ -29,7 +29,6 @@ use Illuminate\Validation\ValidationException;
 class PollController extends Controller
 {
     public function __construct(
-        private readonly ClassroomAccess $access,
         private readonly BoardSessions $sessions,
     ) {}
 
@@ -38,7 +37,8 @@ class PollController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        ['role' => $role] = $this->access->assertCanJoinCall($user, $classroom);
+        $this->authorize('viewPolls', $classroom);
+
         $session = $this->sessions->live($classroom);
 
         if ($session === null) {
@@ -48,17 +48,33 @@ class PollController extends Controller
         $polls = Poll::query()
             ->where('classroom_id', $classroom->getKey())
             ->where('call_session_id', $session->getKey())
-            ->with(['options', 'responses'])
+            ->with([
+                // Choice polls only need counts; the viewer's own row is all the
+                // state the page shows besides them.
+                'options' => fn ($query) => $query->withCount('responses'),
+                'responses' => fn ($query) => $query->where('user_id', $user->getKey()),
+            ])
+            ->withCount('responses')
             ->latest('id')
             ->limit(12)
             ->get();
 
-        $host = $role === ClassroomAccess::ROLE_HOST;
+        // Open-answer polls show every written answer; the rest never need the
+        // response rows at all. This endpoint is polled every few seconds, so it
+        // must not hydrate one model per student per poll.
+        $writtenAnswers = $this->writtenAnswers($polls);
+
+        $host = (int) $classroom->instructor_id === (int) $user->getKey();
 
         return response()->json([
             'data' => [
                 'polls' => $polls
-                    ->map(fn (Poll $poll): array => $this->payload($poll, $user, $host))
+                    ->map(fn (Poll $poll): array => $this->payload(
+                        $poll,
+                        $user,
+                        $host,
+                        $writtenAnswers->get((int) $poll->getKey()),
+                    ))
                     ->values()
                     ->all(),
             ],
@@ -70,7 +86,7 @@ class PollController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $this->access->assertHost($user, $classroom, 'Only the class instructor can open a poll.');
+        $this->authorize('createPoll', $classroom);
 
         $session = $this->sessions->live($classroom);
 
@@ -124,13 +140,9 @@ class PollController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        ['role' => $role] = $this->access->assertCanJoinCall($user, $classroom);
-
-        if ($role === ClassroomAccess::ROLE_HOST) {
-            abort(403, 'The instructor can watch the results but does not vote in their own poll.');
-        }
-
+        $this->authorize('respondToPoll', $classroom);
         $this->assertPollInSession($classroom, $poll);
+        $this->authorize('respond', $poll);
 
         if (! $poll->isOpen()) {
             throw ValidationException::withMessages([
@@ -192,8 +204,9 @@ class PollController extends Controller
         /** @var User $user */
         $user = $request->user();
 
-        $this->access->assertHost($user, $classroom, 'Only the class instructor can close a poll.');
+        $this->authorize('closePoll', $classroom);
         $this->assertPollInSession($classroom, $poll);
+        $this->authorize('close', $poll);
 
         if ($poll->closed_at === null) {
             $poll->forceFill(['closed_at' => now()])->save();
@@ -217,12 +230,45 @@ class PollController extends Controller
         return $session;
     }
 
+    /**
+     * The written answers of the open-answer polls, grouped by poll.
+     *
+     * @param  Collection<int, Poll>  $polls
+     * @return Collection<int, Collection<int, PollResponse>>
+     */
+    private function writtenAnswers(Collection $polls): Collection
+    {
+        $ids = $polls
+            ->reject(static fn (Poll $poll): bool => $poll->isChoice())
+            ->pluck('id')
+            ->map(static fn ($id): int => (int) $id)
+            ->all();
+
+        if ($ids === []) {
+            return collect();
+        }
+
+        return PollResponse::query()
+            ->whereIn('poll_id', $ids)
+            ->whereNotNull('body')
+            ->orderBy('id')
+            ->get(['id', 'poll_id', 'user_id', 'body'])
+            ->groupBy(static fn (PollResponse $response): int => (int) $response->poll_id);
+    }
+
     /** @return array<string, mixed> */
-    private function payload(Poll $poll, User $viewer, bool $host): array
+    private function payload(Poll $poll, User $viewer, bool $host, ?Collection $answers = null): array
     {
         $myResponse = $poll->responses->firstWhere('user_id', (int) $viewer->getKey());
         $open = $poll->isOpen();
-        $counts = $poll->responses->groupBy('poll_option_id')->map(static fn ($group): int => $group->count());
+        $counts = $poll->options->mapWithKeys(static function ($option) use ($poll): array {
+            $count = $option->getAttribute('responses_count');
+
+            return [
+                (int) $option->getKey() => (int) ($count
+                    ?? $poll->responses->where('poll_option_id', $option->getKey())->count()),
+            ];
+        });
 
         return [
             'id' => (int) $poll->getKey(),
@@ -240,7 +286,7 @@ class PollController extends Controller
                 : [],
             'responses' => $poll->isChoice()
                 ? []
-                : $poll->responses
+                : ($answers ?? $poll->responses)
                     ->pluck('body')
                     ->filter(static fn ($body): bool => is_string($body) && trim($body) !== '')
                     ->values()
@@ -251,7 +297,7 @@ class PollController extends Controller
                     'option_id' => $myResponse->poll_option_id,
                     'body' => $myResponse->body,
                 ],
-            'total_responses' => $poll->responses->count(),
+            'total_responses' => (int) ($poll->responses_count ?? $poll->responses->count()),
             'is_open' => $open,
             'can_respond' => ! $host && $open,
             'can_close' => $host && $open,

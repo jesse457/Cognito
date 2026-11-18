@@ -7,6 +7,7 @@ namespace Tests\Feature;
 use App\Models\Classroom;
 use App\Models\Enrollment;
 use App\Models\User;
+use App\Services\DrawPermissions;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -59,11 +60,16 @@ class LiveCallTest extends TestCase
                 ->where('canEditBoard', false)
             );
 
-        $classroom->board->update(['students_can_annotate' => true]);
+        // The instructor hands the pen to one student; the room's list of
+        // drawers is what the browser gates drawing on.
+        app(DrawPermissions::class)->set((int) $classroom->id, (int) $student->id, true);
 
         $this->actingAs($student)
             ->get("/classes/{$classroom->id}/call")
-            ->assertInertia(fn ($page) => $page->where('canEditBoard', true));
+            ->assertInertia(fn ($page) => $page
+                ->where('canEditBoard', true)
+                ->where('board.allowedDrawerIds', [(int) $student->id])
+            );
     }
 
     public function test_the_token_endpoint_mints_a_voice_token_scoped_to_the_room(): void
@@ -96,6 +102,12 @@ class LiveCallTest extends TestCase
         $student = User::factory()->student()->create();
         $classroom = Classroom::factory()->create();
         $this->membership($student, $classroom);
+
+        // The instructor opens the room; only then may a student be given a
+        // voice token for it.
+        $this->actingAs($classroom->instructor()->firstOrFail())
+            ->postJson("/classes/{$classroom->id}/call/session/touch")
+            ->assertOk();
 
         $response = $this->actingAs($student)
             ->postJson("/classes/{$classroom->id}/call/token")

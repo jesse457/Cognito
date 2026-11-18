@@ -4,7 +4,6 @@ import {
     Broadcast,
     CalendarCheck,
     GraduationCap,
-    MagnifyingGlass,
     Student as StudentIcon,
     Users,
 } from '@phosphor-icons/react';
@@ -13,6 +12,7 @@ import type { FormEvent } from 'react';
 import Avatar from '@/components/ui/Avatar';
 import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
+import SearchInput from '@/components/ui/SearchInput';
 import Select from '@/components/ui/Select';
 import Stat from '@/components/ui/Stat';
 import { routes } from '@/lib/routes';
@@ -74,15 +74,14 @@ export default function InstructorStudents({ filters, stats, classrooms, student
             <Head title="Students" />
 
             <header>
-                <p className="eyebrow">Instructor</p>
-                <h1 className="page-title mt-1.5">Students</h1>
+                <h1 className="page-title">Students</h1>
                 <p className="page-sub">
                     Everyone enrolled across your classes, with the calls they joined in the last month. Search a name
                     or narrow the list to one class.
                 </p>
             </header>
 
-            <section aria-label="Students at a glance" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section aria-label="Students at a glance" className="kpi-row grid-cols-2 xl:grid-cols-4">
                 <Stat label="Students" value={stats.students} hint="distinct people you teach" icon={StudentIcon} />
                 <Stat label="Seats" value={stats.seats} hint="memberships across classes" icon={GraduationCap} />
                 <Stat
@@ -96,23 +95,14 @@ export default function InstructorStudents({ filters, stats, classrooms, student
             </section>
 
             <form onSubmit={submit} className="card flex flex-col gap-3 p-4 sm:flex-row sm:items-end">
-                <label className="flex-1">
-                    <span className="label">Search</span>
-                    <span className="relative block">
-                        <MagnifyingGlass
-                            size={16}
-                            className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-ink-soft"
-                            aria-hidden="true"
-                        />
-                        <input
-                            value={q}
-                            onChange={(event) => setQ(event.target.value)}
-                            className="input pl-10"
-                            placeholder="Name or email"
-                            aria-label="Search students"
-                        />
-                    </span>
-                </label>
+                <SearchInput
+                    className="flex-1"
+                    label="Search"
+                    value={q}
+                    onChange={setQ}
+                    placeholder="Name or email"
+                    ariaLabel="Search students"
+                />
 
                 <label className="sm:w-[260px]">
                     <span className="label">Class</span>

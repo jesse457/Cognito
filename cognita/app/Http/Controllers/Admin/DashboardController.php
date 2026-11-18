@@ -19,6 +19,8 @@ class DashboardController extends Controller
 {
     public function __invoke(): Response
     {
+        $this->authorize('viewAdminConsole', User::class);
+
         return Inertia::render('Admin/Dashboard', [
             'counts' => [
                 'users' => User::query()->count(),

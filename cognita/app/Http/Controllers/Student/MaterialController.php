@@ -32,6 +32,8 @@ class MaterialController extends Controller
         /** @var User $student */
         $student = $request->user();
 
+        $this->authorize('viewAny', Classroom::class);
+
         $classrooms = $this->access->forStudent($student);
         $ids = $classrooms->pluck('id')->map(static fn ($id): int => (int) $id)->all();
         $term = trim((string) $request->query('q', ''));

@@ -90,7 +90,10 @@ class AttendanceTest extends TestCase
             ->assertOk();
 
         $this->assertNotNull($record->fresh()->left_at);
-        $this->assertSame(180, $record->fresh()->seconds());
+
+        // Two minutes plus one: the total is read from wall-clock timestamps,
+        // so it may land a second either side of the exact minute.
+        $this->assertEqualsWithDelta(180, $record->fresh()->seconds(), 1);
     }
 
     public function test_another_student_cannot_touch_the_record(): void
@@ -161,10 +164,11 @@ class AttendanceTest extends TestCase
         $classroom = Classroom::factory()->create();
         $this->membership($student, $classroom);
 
+        // A student cannot start a session: without one the instructor opened,
+        // there is nothing to hand out a voice token for.
         $this->actingAs($student)
             ->postJson("/classes/{$classroom->id}/call/token")
-            ->assertOk()
-            ->assertJsonPath('data.attendance', null);
+            ->assertForbidden();
 
         $this->assertDatabaseCount('attendance_records', 0);
         $this->assertDatabaseCount('call_sessions', 0);

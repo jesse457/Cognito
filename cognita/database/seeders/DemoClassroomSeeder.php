@@ -57,7 +57,6 @@ class DemoClassroomSeeder extends Seeder
             [
                 'surface' => 'canvas',
                 'title' => 'Canvas',
-                'students_can_annotate' => true,
             ],
         );
 

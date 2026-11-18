@@ -20,12 +20,12 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(RealtimeProvider::class, function (Application $app): RealtimeProvider {
-            $driver = (string) config('realtime.driver', 'livekit');
-            $class = config("realtime.drivers.{$driver}");
+            $driver = (string) config('services.realtime.driver', 'livekit');
+            $class = config("services.realtime.drivers.{$driver}");
 
             if (! is_string($class) || ! class_exists($class)) {
                 throw new RuntimeException(
-                    "The realtime driver [{$driver}] is not registered. Add it to config/realtime.php.",
+                    "The realtime driver [{$driver}] is not registered. Add it to config/services.php.",
                 );
             }
 
@@ -41,9 +41,11 @@ class AppServiceProvider extends ServiceProvider
         // Keep the searchable vector in step with the post it describes. The
         // embedder short-circuits when the content has not changed, so accepting
         // an answer or touching a timestamp does not call an AI provider.
-        Question::saved(fn (Question $question) => app(PostEmbedder::class)->sync($question));
-        Question::deleted(fn (Question $question) => app(PostEmbedder::class)->forget($question));
-        Answer::saved(fn (Answer $answer) => app(PostEmbedder::class)->sync($answer));
-        Answer::deleted(fn (Answer $answer) => app(PostEmbedder::class)->forget($answer));
+        $embedder = $this->app->make(PostEmbedder::class);
+
+        Question::saved(fn (Question $question) => $embedder->sync($question));
+        Question::deleted(fn (Question $question) => $embedder->forget($question));
+        Answer::saved(fn (Answer $answer) => $embedder->sync($answer));
+        Answer::deleted(fn (Answer $answer) => $embedder->forget($answer));
     }
 }

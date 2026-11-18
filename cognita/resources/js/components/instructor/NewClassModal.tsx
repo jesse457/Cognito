@@ -1,6 +1,6 @@
 import { useForm } from '@inertiajs/react';
 import type { FormEvent } from 'react';
-import Button from '@/components/ui/Button';
+import ModalFooter from '@/components/ui/ModalFooter';
 import { Field, TextInput } from '@/components/ui/Field';
 import Modal from '@/components/ui/Modal';
 import Select from '@/components/ui/Select';
@@ -72,14 +72,12 @@ export default function NewClassModal({
                     )}
                 </Field>
 
-                <div className="flex justify-end gap-2 border-t border-line pt-4">
-                    <Button variant="quiet" onClick={onClose}>
-                        Cancel
-                    </Button>
-                    <Button type="submit" variant="primary" disabled={form.processing}>
-                        {form.processing ? 'Creating' : 'Create class'}
-                    </Button>
-                </div>
+                <ModalFooter
+                    onCancel={onClose}
+                    submitLabel="Create class"
+                    busyLabel="Creating"
+                    busy={form.processing}
+                />
             </form>
         </Modal>
     );

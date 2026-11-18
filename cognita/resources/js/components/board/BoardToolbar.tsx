@@ -12,7 +12,6 @@ import {
     Eraser,
     FilePdf,
     Flashlight,
-    HandPalm,
     LineSegment,
     MarkerCircle,
     Minus,
@@ -48,7 +47,6 @@ interface BoardToolbarProps {
     width: number;
     eraserWidth: number;
     zoom: number;
-    studentsCanAnnotate: boolean;
     fullscreen: boolean;
     onSurface: (surface: BoardSurface) => void;
     onPage: (page: number) => void;
@@ -62,7 +60,6 @@ interface BoardToolbarProps {
     onZoom: (zoom: number) => void;
     onUndo: () => void;
     onRedo: () => void;
-    onToggleStudents: () => void;
     onToggleFullscreen: () => void;
     /** Host only: clear the board into a new room. */
     onNewRoom?: () => void;
@@ -103,7 +100,6 @@ export default function BoardToolbar(props: BoardToolbarProps) {
         width,
         eraserWidth,
         zoom,
-        studentsCanAnnotate,
         fullscreen,
     } = props;
 
@@ -393,25 +389,6 @@ export default function BoardToolbar(props: BoardToolbarProps) {
                     <span className="hidden sm:inline">Redo</span>
                 </button>
 
-                {canManage ? (
-                    <button
-                        type="button"
-                        onClick={props.onToggleStudents}
-                        className={cn(
-                            'ml-auto inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-[12px] font-medium transition',
-                            studentsCanAnnotate
-                                ? 'bg-live text-live-ink hover:bg-live/85'
-                                : 'text-stage-ink/70 hover:bg-stage-ink/10 hover:text-stage-ink',
-                        )}
-                        aria-pressed={studentsCanAnnotate}
-                        title="Let the selected students draw on the board"
-                    >
-                        <HandPalm size={15} weight={studentsCanAnnotate ? 'fill' : 'regular'} aria-hidden="true" />
-                        <span className="hidden sm:inline">
-                            {studentsCanAnnotate ? 'Students can draw' : 'Hand over the pen'}
-                        </span>
-                    </button>
-                ) : null}
             </div>
         </div>
     );

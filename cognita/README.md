@@ -15,10 +15,13 @@ npm run build                      # production assets
 
 ## Layout
 
-- `app/Enums` — `UserRole`, `BoardSurface`
-- `app/Http/Controllers` — auth, dashboard, key door, live call, board; `Instructor/`, `Student/`, `Admin/`
-- `app/Models` — `User`, `Course`, `Classroom`, `Enrollment`, `ClassBoard`
-- `app/Services` — `ClassroomAccess` (authorisation), `LiveKit` (tokens)
-- `resources/js` — `pages/`, `components/`, `layouts/`, `lib/`, `types/`
-- `routes/` — `web.php` plus one file per role
+- `app/Models`, `app/Http/Controllers`, `app/Http/Requests`, `app/Services`,
+  `app/Policies`, `app/Enums` — the conventional Laravel layout; controllers are
+  grouped in `Instructor/`, `Student/` and `Admin/` subfolders
+- `resources/js/layouts` — two main platforms: `DashboardShell` (classes, calls,
+  attendance, tasks and progress) and `CommunityShell` (feed, courses, groups);
+  `AppShell` serves admin, `GuestShell` sign-in, the live call is bare
+- `resources/js/pages/Community` — the feed, post detail, course library and groups
+- `resources/js` — `pages/`, `components/`, `hooks/`, `lib/`, `realtime/`, `types/`
+- `routes/` — `web.php` plus one file per role, `questions.php` (feed) and `community.php`
 - `tests/` — `Unit` + `Feature`

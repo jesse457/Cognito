@@ -37,6 +37,8 @@ class StudentController extends Controller
         /** @var User $instructor */
         $instructor = $request->user();
 
+        $this->authorize('viewAny', Classroom::class);
+
         $classrooms = $this->access->forInstructor($instructor);
         $ids = $classrooms->pluck('id')->map(static fn ($id): int => (int) $id)->all();
 

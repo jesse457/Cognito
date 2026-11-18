@@ -22,8 +22,9 @@ class AdminConsoleTest extends TestCase
         $student = User::factory()->student()->create();
 
         $this->actingAs($admin)
+            ->from('/admin/users')
             ->patch("/admin/users/{$student->id}/role", ['role' => 'instructor'])
-            ->assertRedirect();
+            ->assertRedirect('/admin/users');
 
         $this->assertSame(UserRole::Instructor, $student->fresh()->role);
     }
@@ -34,7 +35,7 @@ class AdminConsoleTest extends TestCase
 
         $this->actingAs($admin)
             ->patch("/admin/users/{$admin->id}/role", ['role' => 'student'])
-            ->assertSessionHasErrors('role');
+            ->assertForbidden();
 
         $this->assertSame(UserRole::Admin, $admin->fresh()->role);
     }
@@ -44,10 +45,13 @@ class AdminConsoleTest extends TestCase
         $admin = User::factory()->admin()->create();
         $other = User::factory()->admin()->create(['email' => 'second@cognita.test']);
 
-        $this->actingAs($admin)->delete("/admin/users/{$admin->id}")->assertSessionHasErrors('user');
-        $this->actingAs($other)->delete("/admin/users/{$admin->id}")->assertRedirect();
+        $this->actingAs($admin)->delete("/admin/users/{$admin->id}")->assertForbidden();
+        $this->actingAs($other)
+            ->from('/admin/users')
+            ->delete("/admin/users/{$admin->id}")
+            ->assertRedirect('/admin/users');
 
-        $this->assertDatabaseMissing('users', ['id' => $admin->id]);
+        $this->assertModelMissing($admin);
     }
 
     public function test_deleting_a_student_removes_their_memberships(): void
@@ -56,13 +60,15 @@ class AdminConsoleTest extends TestCase
         $student = User::factory()->student()->create();
         $classroom = Classroom::factory()->create();
 
-        Enrollment::query()->create([
+        Enrollment::factory()->create([
             'classroom_id' => $classroom->getKey(),
             'student_id' => $student->getKey(),
-            'joined_at' => now(),
         ]);
 
-        $this->actingAs($admin)->delete("/admin/users/{$student->id}")->assertRedirect();
+        $this->actingAs($admin)
+            ->from('/admin/users')
+            ->delete("/admin/users/{$student->id}")
+            ->assertRedirect('/admin/users');
 
         $this->assertDatabaseCount('enrollments', 0);
     }

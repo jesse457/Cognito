@@ -13,20 +13,23 @@ return [
     |
     */
 
-    'default' => env('FILESYSTEM_DISK', 'local'),
+    'default' => env('FILESYSTEM_DISK', 's3'),
 
     /*
     |--------------------------------------------------------------------------
-    | Board Document Disk
+    | Media Disk
     |--------------------------------------------------------------------------
     |
-    | Which disk class-board PDFs are stored on. Defaults to the S3 driver
-    | (MinIO in development, real S3 in production). Set to "local" for
-    | file-based storage.
+    | Where every media file in the product lives: the PDFs attached to a
+    | class, the photos on a question and an answer. Defaults to the S3 driver
+    | (MinIO in development, real S3 in production), so nothing is written to
+    | the app disk and nothing is exposed under public/.
+    |
+    | Set MEDIA_DISK=local for file-based storage.
     |
     */
 
-    'board_disk' => env('BOARDS_DISK', 's3'),
+    'media_disk' => env('MEDIA_DISK', 's3'),
 
     /*
     |--------------------------------------------------------------------------

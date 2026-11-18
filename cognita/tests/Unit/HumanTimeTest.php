@@ -6,7 +6,7 @@ namespace Tests\Unit;
 
 use App\Support\HumanTime;
 use Illuminate\Support\Carbon;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 /**
  * The dashboard's time phrasing, against a clock that never moves.
@@ -17,12 +17,12 @@ class HumanTimeTest extends TestCase
     {
         parent::setUp();
 
-        Carbon::setTestNow(Carbon::parse('2026-11-05 12:00:00'));
+        $this->travelTo(Carbon::parse('2026-11-05 12:00:00'));
     }
 
     protected function tearDown(): void
     {
-        Carbon::setTestNow();
+        $this->travelBack();
 
         parent::tearDown();
     }

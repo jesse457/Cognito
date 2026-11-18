@@ -6,7 +6,6 @@ import {
     ChalkboardTeacher,
     ClockCounterClockwise,
     FilePdf,
-    MagnifyingGlass,
     Microphone,
     Plus,
     Users,
@@ -17,8 +16,10 @@ import NewClassModal from '@/components/instructor/NewClassModal';
 import Button from '@/components/ui/Button';
 import EmptyState from '@/components/ui/EmptyState';
 import KeyChip from '@/components/ui/KeyChip';
+import SearchInput from '@/components/ui/SearchInput';
 import Select from '@/components/ui/Select';
 import Stat from '@/components/ui/Stat';
+import LiveChip from '@/components/ui/LiveChip';
 import { routes } from '@/lib/routes';
 import { cn, pluralize } from '@/lib/utils';
 
@@ -86,8 +87,7 @@ export default function InstructorClassrooms({ filters, stats, courses, classroo
 
             <header className="flex flex-wrap items-end justify-between gap-4">
                 <div>
-                    <p className="eyebrow">Instructor</p>
-                    <h1 className="page-title mt-1.5">Classes</h1>
+                    <h1 className="page-title">Classes</h1>
                     <p className="page-sub">
                         Every room you teach. Open one to see the roster, the key, the board and the register; start a
                         new one whenever you need another group.
@@ -99,7 +99,7 @@ export default function InstructorClassrooms({ filters, stats, courses, classroo
                 </Button>
             </header>
 
-            <section aria-label="Classes at a glance" className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <section aria-label="Classes at a glance" className="kpi-row grid-cols-2 xl:grid-cols-4">
                 <Stat label="Classes" value={stats.classes} hint="each owns one call and board" icon={ChalkboardTeacher} />
                 <Stat label="Students" value={stats.students} hint="enrolled across your classes" icon={Users} />
                 <Stat
@@ -118,23 +118,14 @@ export default function InstructorClassrooms({ filters, stats, courses, classroo
             </section>
 
             <form onSubmit={submit} className="card flex flex-col gap-3 p-4 lg:flex-row lg:items-end">
-                <label className="flex-1">
-                    <span className="label">Search</span>
-                    <span className="relative block">
-                        <MagnifyingGlass
-                            size={16}
-                            className="pointer-events-none absolute top-1/2 left-3.5 -translate-y-1/2 text-ink-soft"
-                            aria-hidden="true"
-                        />
-                        <input
-                            value={q}
-                            onChange={(event) => setQ(event.target.value)}
-                            className="input pl-10"
-                            placeholder="Class name, course or key"
-                            aria-label="Search classes"
-                        />
-                    </span>
-                </label>
+                <SearchInput
+                    className="flex-1"
+                    label="Search"
+                    value={q}
+                    onChange={setQ}
+                    placeholder="Class name, course or key"
+                    ariaLabel="Search classes"
+                />
 
                 <label className="lg:w-[220px]">
                     <span className="label">Course</span>
@@ -182,10 +173,10 @@ export default function InstructorClassrooms({ filters, stats, courses, classroo
             <section aria-labelledby="class-list-heading" className="flex flex-col gap-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 id="class-list-heading" className="section-title">
-                        {filtering ? pluralize(classrooms.length, 'match', 'matches') : 'All classes'}
+                        {filtering ? pluralize(classrooms.length, 'match') : 'All classes'}
                     </h2>
                     <p className="meta">
-                        {pluralize(stats.students, 'student')} · {pluralize(stats.classes, 'class', 'classes')}
+                        {pluralize(stats.students, 'student')} · {pluralize(stats.classes, 'class')}
                     </p>
                 </div>
 
@@ -218,26 +209,21 @@ export default function InstructorClassrooms({ filters, stats, courses, classroo
                             <li
                                 key={classroom.id}
                                 className={cn(
-                                    'card flex flex-col gap-3.5 p-5 transition hover:border-line-strong',
-                                    classroom.live && 'border-live/40',
+                                    'card flex flex-col gap-3.5 p-4 transition hover:border-line-strong',
+                                    classroom.live && 'border-live/30',
                                 )}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div className="min-w-0">
-                                        <p className="eyebrow truncate">
-                                            {classroom.course ?? 'Unassigned course'}
-                                        </p>
-                                        <h3 className="mt-1.5 truncate text-[15px] font-semibold">
+                                        <h3 className="truncate text-[14px] font-semibold tracking-[-0.01em]">
                                             <Link href={classroom.class_url} className="hover:text-brand">
                                                 {classroom.name}
                                             </Link>
                                         </h3>
+                                        <p className="meta mt-0.5 truncate">{classroom.course ?? 'Unassigned course'}</p>
                                     </div>
                                     {classroom.live ? (
-                                        <span className="chip chip-live shrink-0">
-                                            <span className="live-dot" aria-hidden="true" />
-                                            Live
-                                        </span>
+                                        <LiveChip label="Live" />
                                     ) : (
                                         <span className="chip chip-neutral shrink-0">
                                             <Users size={13} aria-hidden="true" />

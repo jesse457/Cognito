@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Tests\Feature;
 
+use App\Enums\PollKind;
 use App\Models\CallSession;
 use App\Models\Classroom;
 use App\Models\Enrollment;
@@ -39,7 +40,7 @@ class PollTest extends TestCase
     private function createPoll(User $host, Classroom $classroom, array $overrides = []): int
     {
         $response = $this->actingAs($host)->postJson("/classes/{$classroom->id}/call/polls", array_merge([
-            'kind' => Poll::KIND_OPEN,
+            'kind' => PollKind::Open,
             'question' => 'Which step is still unclear?',
             'duration' => 60,
         ], $overrides))->assertCreated();
@@ -92,7 +93,7 @@ class PollTest extends TestCase
         $this->live($classroom, $instructor);
 
         $pollId = $this->createPoll($instructor, $classroom, [
-            'kind' => Poll::KIND_CHOICE,
+            'kind' => PollKind::Choice,
             'question' => 'Which equation applies first?',
             'options' => ['Momentum', 'Kinetic energy', 'Both at once'],
         ]);
@@ -132,7 +133,7 @@ class PollTest extends TestCase
         $this->live($classroom, $instructor);
 
         $pollId = $this->createPoll($instructor, $classroom, [
-            'kind' => Poll::KIND_CHOICE,
+            'kind' => PollKind::Choice,
             'question' => 'Which equation applies first?',
             'options' => ['Momentum', 'Kinetic energy'],
         ]);
@@ -217,7 +218,7 @@ class PollTest extends TestCase
 
         $this->actingAs($student)
             ->postJson("/classes/{$classroom->id}/call/polls", [
-                'kind' => Poll::KIND_OPEN,
+                'kind' => PollKind::Open,
                 'question' => 'Can I create this?',
                 'duration' => 60,
             ])
@@ -257,7 +258,7 @@ class PollTest extends TestCase
 
         $this->actingAs($instructor)
             ->postJson("/classes/{$classroom->id}/call/polls", [
-                'kind' => Poll::KIND_OPEN,
+                'kind' => PollKind::Open,
                 'question' => 'No live room yet.',
                 'duration' => 60,
             ])
@@ -292,7 +293,7 @@ class PollTest extends TestCase
 
         $this->actingAs($instructor)
             ->postJson("/classes/{$classroom->id}/call/polls", [
-                'kind' => Poll::KIND_CHOICE,
+                'kind' => PollKind::Choice,
                 'question' => 'One option only?',
                 'duration' => 60,
                 'options' => ['Only one'],
@@ -301,7 +302,7 @@ class PollTest extends TestCase
             ->assertJsonValidationErrors('options');
 
         $pollId = $this->createPoll($instructor, $classroom, [
-            'kind' => Poll::KIND_CHOICE,
+            'kind' => PollKind::Choice,
             'options' => ['One', 'Two'],
         ]);
 

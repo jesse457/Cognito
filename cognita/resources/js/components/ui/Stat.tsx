@@ -15,29 +15,42 @@ interface StatProps {
     tone?: 'neutral' | 'live';
     /** Makes the whole tile a link to the page that explains the number. */
     href?: string;
+    /** Replaces the label colour, for a tile that means something special. */
+    labelClassName?: string;
 }
 
 /**
- * One Tier-1 number on a dashboard.
+ * One number on a dashboard.
  *
  * The anatomy is fixed so four of these read as one row rather than four
  * unrelated cards: label, value, context, icon. The value is the only element
  * that changes size, and the hint always says what the number is measuring —
  * a count with no window ("12 sessions") is not a metric anyone can act on.
+ *
+ * The tile carries no border of its own; the `.kpi-row` around it draws the
+ * rules, so the row reads as one instrument rather than four boxes.
  */
-export default function Stat({ label, value, hint, icon: Glyph, tone = 'neutral', href }: StatProps) {
+export default function Stat({
+    label,
+    value,
+    hint,
+    icon: Glyph,
+    tone = 'neutral',
+    href,
+    labelClassName,
+}: StatProps) {
     const tile = (
-        <div className={cn('stat flex h-full flex-col gap-1', href !== undefined && 'transition hover:border-line-strong')}>
+        <div className={cn('stat', href !== undefined && 'transition hover:bg-surface-sunken/60')}>
             <div className="flex items-start justify-between gap-3">
-                <p className="eyebrow">{label}</p>
+                <p className={cn('text-[11.5px] font-medium text-ink-soft', labelClassName)}>{label}</p>
                 {Glyph ? (
-                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-soft">
-                        <Glyph size={15} weight="duotone" aria-hidden="true" />
+                    <span className="shrink-0 text-ink-soft">
+                        <Glyph size={15} aria-hidden="true" />
                     </span>
                 ) : null}
             </div>
 
-            <p className={cn('stat-value tabular', tone === 'live' && 'text-live')}>{value}</p>
+            <p className={cn('stat-value', tone === 'live' && 'text-live')}>{value}</p>
 
             {hint !== undefined ? <p className="meta leading-snug">{hint}</p> : null}
         </div>
@@ -48,7 +61,10 @@ export default function Stat({ label, value, hint, icon: Glyph, tone = 'neutral'
     }
 
     return (
-        <Link href={href} className="block rounded-2xl focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
+        <Link
+            href={href}
+            className="block focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        >
             {tile}
         </Link>
     );

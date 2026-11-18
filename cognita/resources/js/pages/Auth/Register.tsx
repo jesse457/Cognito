@@ -5,12 +5,9 @@ import Button from '@/components/ui/Button';
 import { Field, TextInput } from '@/components/ui/Field';
 import { routes } from '@/lib/routes';
 
-interface RegisterPageProps {
-    errors?: Record<string, string>;
-}
-
-export default function Register({ errors = {} }: RegisterPageProps) {
+export default function Register() {
     const form = useForm({ name: '', email: '', password: '', password_confirmation: '' });
+    const errors = form.errors;
 
     function submit(event: FormEvent): void {
         event.preventDefault();
@@ -21,12 +18,11 @@ export default function Register({ errors = {} }: RegisterPageProps) {
         <>
             <Head title="Create account" />
 
-            <div className="card p-6 sm:p-7">
-                <p className="eyebrow">Students</p>
-                <h1 className="mt-2 text-xl font-semibold tracking-tight">Create your account</h1>
+            <div className="card p-5 shadow-float">
+                <h1 className="text-[17px] font-semibold tracking-[-0.02em]">Create your account</h1>
                 <p className="page-sub">Then type the class key your instructor shared to join the room.</p>
 
-                <form onSubmit={submit} className="mt-6 flex flex-col gap-4">
+                <form onSubmit={submit} className="mt-5 flex flex-col gap-4">
                     <Field label="Full name" error={errors.name}>
                         {(id) => (
                             <TextInput

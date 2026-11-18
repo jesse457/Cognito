@@ -20,8 +20,9 @@ class InstructorConsoleTest extends TestCase
         $instructor = User::factory()->instructor()->create();
 
         $this->actingAs($instructor)
+            ->from('/instructor/courses')
             ->post('/instructor/courses', ['title' => 'Applied Physics'])
-            ->assertRedirect();
+            ->assertRedirect('/instructor/courses');
 
         $this->assertDatabaseHas('courses', [
             'title' => 'Applied Physics',
@@ -38,7 +39,7 @@ class InstructorConsoleTest extends TestCase
             ->patch("/instructor/courses/{$other->id}", ['title' => 'Hijacked'])
             ->assertForbidden();
 
-        $this->assertSame($other->fresh()->title === 'Hijacked', false);
+        $this->assertNotSame('Hijacked', $other->fresh()->title);
     }
 
     public function test_creating_a_class_generates_a_key_and_a_board(): void
@@ -75,8 +76,9 @@ class InstructorConsoleTest extends TestCase
         $classroom = Classroom::factory()->create(['instructor_id' => $instructor->id, 'join_code' => 'OLDKEY']);
 
         $this->actingAs($instructor)
+            ->from("/instructor/classes/{$classroom->id}")
             ->post("/instructor/classes/{$classroom->id}/key")
-            ->assertRedirect();
+            ->assertRedirect("/instructor/classes/{$classroom->id}");
 
         $this->assertNotSame('OLDKEY', $classroom->fresh()->join_code);
     }

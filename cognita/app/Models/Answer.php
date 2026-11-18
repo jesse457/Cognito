@@ -12,7 +12,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
- * One answer to a class question. A question owner can mark one answer as
+ * One answer to a community post. A post owner can mark one answer as
  * accepted; votes decide the rest of the order.
  */
 class Answer extends Model

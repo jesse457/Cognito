@@ -145,7 +145,6 @@ export default function BoardWorkspace({
                         width={board.width}
                         eraserWidth={board.eraserWidth}
                         zoom={board.zoom}
-                        studentsCanAnnotate={state.studentsCanAnnotate}
                         fullscreen={active}
                         onSurface={board.changeSurface}
                         onPage={board.flipPage}
@@ -159,7 +158,6 @@ export default function BoardWorkspace({
                         onZoom={board.setZoom}
                         onUndo={board.undo}
                         onRedo={board.redo}
-                        onToggleStudents={board.toggleStudents}
                         onToggleFullscreen={fullscreen.toggle}
                         onNewRoom={canManage ? onNewRoom : undefined}
                     />

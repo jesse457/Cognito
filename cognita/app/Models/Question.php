@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace App\Models;
 
 use Database\Factories\QuestionFactory;
-use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -13,23 +12,24 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 
 /**
- * A class or community question that classmates answer and vote on, the way a
- * Stack Overflow thread works inside one room or across the whole school.
+ * A community post: either a general post for everyone, or a question inside a
+ * learner-made group. Answers and votes work the same way in both.
+ *
+ * @property int|null $group_id
+ * @property int $user_id
+ * @property string $title
+ * @property string $body
+ * @property array<int, string>|null $tags
  */
 class Question extends Model
 {
     /** @use HasFactory<QuestionFactory> */
     use HasFactory;
 
-    public const VISIBILITY_CLASSROOM = 'classroom';
-
-    public const VISIBILITY_COMMUNITY = 'community';
-
     /** @var list<string> */
     protected $fillable = [
-        'classroom_id',
+        'group_id',
         'user_id',
-        'visibility',
         'title',
         'body',
         'tags',
@@ -45,10 +45,10 @@ class Question extends Model
         ];
     }
 
-    /** @return BelongsTo<Classroom, $this> */
-    public function classroom(): BelongsTo
+    /** @return BelongsTo<Group, $this> */
+    public function group(): BelongsTo
     {
-        return $this->belongsTo(Classroom::class);
+        return $this->belongsTo(Group::class);
     }
 
     /** @return BelongsTo<User, $this> */
@@ -75,20 +75,8 @@ class Question extends Model
         return $this->morphMany(PostMedia::class, 'mediable');
     }
 
-    public function isCommunity(): bool
+    public function isGeneral(): bool
     {
-        return $this->visibility === self::VISIBILITY_COMMUNITY;
-    }
-
-    /** @param  Builder<Question>  $query */
-    public function scopeCommunity(Builder $query): void
-    {
-        $query->where('visibility', self::VISIBILITY_COMMUNITY);
-    }
-
-    /** @param  Builder<Question>  $query */
-    public function scopeClassroom(Builder $query): void
-    {
-        $query->where('visibility', self::VISIBILITY_CLASSROOM);
+        return $this->group_id === null;
     }
 }

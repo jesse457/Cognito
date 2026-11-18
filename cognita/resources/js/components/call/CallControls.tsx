@@ -140,7 +140,7 @@ export default function CallControls({
                 <button
                     type="button"
                     onClick={onToggleHand}
-                    className={cn('call-control', handRaised && 'bg-warn-soft text-warn hover:bg-warn-soft/80 hover:text-warn')}
+                    className={cn('call-control', handRaised && 'bg-stage-warn/20 text-stage-warn hover:bg-stage-warn/30 hover:text-stage-warn')}
                     aria-pressed={handRaised}
                     title={handRaised ? 'Lower your hand' : 'Raise your hand'}
                 >

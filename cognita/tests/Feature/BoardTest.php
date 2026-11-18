@@ -107,14 +107,8 @@ class BoardTest extends TestCase
         $classroom = Classroom::factory()->create();
         $this->member($student, $classroom);
 
-        $classroom->board->update(['students_can_annotate' => true]);
-
         $this->actingAs($student)
             ->patchJson("/classes/{$classroom->id}/board", ['surface' => 'canvas'])
-            ->assertForbidden();
-
-        $this->actingAs($student)
-            ->patchJson("/classes/{$classroom->id}/board", ['students_can_annotate' => true])
             ->assertForbidden();
     }
 
@@ -130,7 +124,7 @@ class BoardTest extends TestCase
                 ],
             ])
             ->assertStatus(422)
-            ->assertJsonPath('message', 'Drawings live in the room only. The board saves its surface, page and permissions.');
+            ->assertJsonPath('message', 'Drawings live in the room only. The board saves its surface and its page.');
 
         // Nothing about that request reached a table: no room was created and
         // the board itself is untouched.
@@ -175,8 +169,8 @@ class BoardTest extends TestCase
         $board = $classroom->board->fresh();
 
         $this->assertSame('pdf', $board->surface->value);
-        $this->assertSame('lecture.pdf', $board->document_name);
-        Storage::disk('local')->assertExists($board->document_path);
+        $this->assertSame('lecture.pdf', $board->document->name);
+        Storage::disk('local')->assertExists($board->document->path);
     }
 
     public function test_uploaded_pdfs_stay_in_the_class_library_and_can_be_selected_again(): void

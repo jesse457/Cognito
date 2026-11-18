@@ -7,6 +7,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Classroom;
 use App\Models\Course;
+use App\Models\User;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -18,6 +19,8 @@ class InventoryController extends Controller
 {
     public function courses(): Response
     {
+        $this->authorize('viewAdminConsole', User::class);
+
         return Inertia::render('Admin/Courses', [
             'courses' => Course::query()
                 ->with('instructor:id,name')
@@ -29,6 +32,8 @@ class InventoryController extends Controller
                     'title' => $course->title,
                     'description' => $course->description,
                     'instructor' => $course->instructor?->name,
+                    'is_paid' => $course->requiresPayment(),
+                    'price_label' => $course->requiresPayment() ? $course->priceLabel() : null,
                     'classrooms_count' => (int) $course->classrooms_count,
                     'created_at' => $course->created_at?->toDateString(),
                 ])
@@ -39,6 +44,8 @@ class InventoryController extends Controller
 
     public function classrooms(): Response
     {
+        $this->authorize('viewAdminConsole', User::class);
+
         return Inertia::render('Admin/Classrooms', [
             'classrooms' => Classroom::query()
                 ->with(['instructor:id,name', 'course:id,title'])

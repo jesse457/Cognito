@@ -3,7 +3,7 @@
  *
  * The server names its provider (`realtime.driver`); this registry maps that
  * name to a client adapter. Adding a provider means adding one entry here and
- * one class under app/Realtime — no component, no hook and no board code
+ * one class under app/Services — no component, no hook and no board code
  * changes.
  */
 import { LiveKitTransport } from './livekit-transport';

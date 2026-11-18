@@ -2,7 +2,6 @@ import inertia from '@inertiajs/vite';
 import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import laravel from 'laravel-vite-plugin';
-import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig } from 'vite';
 import { resolve } from 'node:path';
 
@@ -11,14 +10,8 @@ export default defineConfig({
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.tsx'],
             refresh: true,
-            fonts: [
-                // Instrument Sans: screen-first grotesk with tight counters,
-                // close in spirit to the Google Sans used by Meet's product UI
-                // and legible at 12-14px in dense tables.
-                bunny('Instrument Sans', {
-                    weights: [400, 500, 600],
-                }),
-            ],
+            // No CDN fonts: the type stack is self-hosted through Fontsource so
+            // the app renders identically on a LAN with no internet access.
         }),
         inertia(),
         react(),

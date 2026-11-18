@@ -1,14 +1,20 @@
 import { CheckCircle, Info, Warning, WarningCircle, X } from '@phosphor-icons/react';
 import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
+import { ApiError } from '@/lib/http';
 import { cn } from '@/lib/utils';
 
 /**
  * Pop-ups for things that just happened.
  *
- * The call page has a lot to say ("the instructor handed you the pen", "you
- * were muted", "the room ended") but a banner stack would eat the stage. A
- * toast says it once, in the corner, and gets out of the way.
+ * One toast for the whole product. The live call has a lot to say ("the
+ * instructor handed you the pen", "you were muted", "the room ended") and so
+ * does everything else ("the class was created", "your answer was accepted"),
+ * so there is a single notification shape that every action reports through —
+ * including the one-shot messages the server sends back.
+ *
+ * It sits in the middle of the screen, where a message that matters cannot be
+ * missed, and it says itself with an icon that arrives rather than appears.
  */
 export type ToastTone = 'info' | 'success' | 'warn' | 'error';
 
@@ -40,10 +46,17 @@ const TONE_ICON = {
 } as const;
 
 const TONE_RING: Record<ToastTone, string> = {
-    info: 'border-line bg-surface/95 text-ink',
+    info: 'border-line bg-surface/97 text-ink',
     success: 'border-live/30 bg-live-soft text-live',
     warn: 'border-warn/30 bg-warn-soft text-warn',
     error: 'border-danger/30 bg-danger-soft text-danger',
+};
+
+const TONE_HALO: Record<ToastTone, string> = {
+    info: 'bg-ink/10',
+    success: 'bg-live/25',
+    warn: 'bg-warn/25',
+    error: 'bg-danger/25',
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -75,7 +88,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
         <ToastContext.Provider value={value}>
             {children}
             <div
-                className="pointer-events-none fixed inset-x-0 bottom-4 z-[60] flex flex-col items-center gap-2 px-3 sm:right-4 sm:left-auto sm:bottom-auto sm:top-4 sm:items-end"
+                className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex flex-col items-center gap-2.5 px-3 pt-4 sm:pt-6"
                 role="region"
                 aria-label="Notifications"
             >
@@ -97,22 +110,44 @@ export function useToast(): ToastContextValue {
     return context;
 }
 
-function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
-    const Icon = TONE_ICON[toast.tone ?? 'info'];
+/**
+ * Report something that did not work.
+ *
+ * The server already explains itself in the error it sent, so the toast shows
+ * that sentence rather than making the reader guess.
+ */
+export function reportError(push: (input: ToastInput) => void, error: unknown): void {
+    push({
+        title: 'That did not work',
+        description: error instanceof ApiError ? error.message : 'Please try again.',
+        tone: 'error',
+    });
+}
+
+export function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }) {
+    const tone = toast.tone ?? 'info';
+    const Icon = TONE_ICON[tone];
 
     return (
         <div
             className={cn(
-                'toast-in pointer-events-auto flex w-full max-w-sm items-start gap-2.5 rounded-2xl border px-3.5 py-2.5 shadow-float backdrop-blur',
-                TONE_RING[toast.tone ?? 'info'],
+                'toast-in pointer-events-auto flex w-full max-w-lg items-start gap-3.5 rounded-2xl border px-5 py-4 shadow-float backdrop-blur',
+                TONE_RING[tone],
             )}
-            role={toast.tone === 'error' ? 'alert' : 'status'}
+            role={tone === 'error' ? 'alert' : 'status'}
         >
-            <Icon size={17} weight="fill" className="mt-0.5 shrink-0" aria-hidden="true" />
-            <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-semibold leading-snug">{toast.title}</p>
+            <span className="relative mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center">
+                <span
+                    className={cn('toast-halo absolute inset-0 rounded-full', TONE_HALO[tone])}
+                    aria-hidden="true"
+                />
+                <Icon size={22} weight="fill" className="toast-icon relative" aria-hidden="true" />
+            </span>
+
+            <div className="min-w-0 flex-1 pt-0.5">
+                <p className="text-[14.5px] leading-snug font-semibold">{toast.title}</p>
                 {toast.description ? (
-                    <p className="mt-0.5 text-[12px] leading-relaxed opacity-75">{toast.description}</p>
+                    <p className="mt-1 text-[13px] leading-relaxed opacity-80">{toast.description}</p>
                 ) : null}
                 {toast.action ? (
                     <button
@@ -121,19 +156,20 @@ function ToastCard({ toast, onDismiss }: { toast: Toast; onDismiss: () => void }
                             toast.action?.onClick();
                             onDismiss();
                         }}
-                        className="mt-1.5 rounded-full bg-ink/10 px-2.5 py-1 text-[11px] font-semibold transition hover:bg-ink/15"
+                        className="mt-2 rounded-full bg-ink/10 px-3 py-1 text-[12px] font-semibold transition hover:bg-ink/15"
                     >
                         {toast.action.label}
                     </button>
                 ) : null}
             </div>
+
             <button
                 type="button"
                 onClick={onDismiss}
-                className="-mr-1 rounded-full p-1 opacity-60 transition hover:opacity-100"
+                className="-mt-1 -mr-1 rounded-full p-1.5 opacity-50 transition hover:opacity-100"
                 aria-label="Dismiss notification"
             >
-                <X size={13} weight="bold" aria-hidden="true" />
+                <X size={15} weight="bold" aria-hidden="true" />
             </button>
         </div>
     );

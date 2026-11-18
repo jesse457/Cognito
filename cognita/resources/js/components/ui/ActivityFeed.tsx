@@ -16,9 +16,9 @@ export default function ActivityFeed({ items }: { items: ActivityEntry[] }) {
                 <li key={item.id}>
                     <Link
                         href={item.href}
-                        className="group flex items-center gap-3 px-5 py-3 transition-colors hover:bg-surface-sunken/60"
+                        className="group flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-surface-sunken/60"
                     >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-surface-sunken text-ink-muted">
+                        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-surface-sunken text-ink-muted">
                             {item.kind === 'call' ? (
                                 <Microphone size={15} weight="duotone" aria-hidden="true" />
                             ) : (
@@ -27,8 +27,8 @@ export default function ActivityFeed({ items }: { items: ActivityEntry[] }) {
                         </span>
 
                         <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-medium text-ink">{item.title}</span>
-                            <span className="block truncate text-xs text-ink-muted">{item.meta}</span>
+                            <span className="block truncate text-[13px] font-medium text-ink">{item.title}</span>
+                            <span className="block truncate text-[12px] text-ink-muted">{item.meta}</span>
                         </span>
 
                         <span className="shrink-0 text-right">

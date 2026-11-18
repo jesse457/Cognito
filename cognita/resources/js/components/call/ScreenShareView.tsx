@@ -78,7 +78,7 @@ export default function ScreenShareView({
         >
             <video ref={video} autoPlay playsInline muted className="h-full w-full object-contain" />
 
-            <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-black/65 px-2.5 py-1 text-[11px] font-medium text-white/90 backdrop-blur">
+            <span className="absolute top-3 left-3 inline-flex items-center gap-1.5 rounded-full bg-stage/75 px-2.5 py-1 text-[11px] font-medium text-stage-ink/90 backdrop-blur">
                 <MonitorArrowUp size={13} weight="fill" aria-hidden="true" />
                 {participant.name}
                 {participant.isLocal ? ' (you)' : ''} is sharing

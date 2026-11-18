@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace App\Http\Requests;
 
-use App\Models\Poll;
+use App\Enums\PollKind;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -46,10 +46,10 @@ class StorePollRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'kind' => ['required', Rule::in([Poll::KIND_OPEN, Poll::KIND_CHOICE])],
+            'kind' => ['required', Rule::enum(PollKind::class)],
             'question' => ['required', 'string', 'max:240'],
             'duration' => ['required', 'integer', 'min:10', 'max:600'],
-            'options' => ['exclude_unless:kind,'.Poll::KIND_CHOICE, 'required', 'array', 'min:2', 'max:6'],
+            'options' => ['exclude_unless:kind,'.PollKind::Choice->value, 'required', 'array', 'min:2', 'max:6'],
             'options.*' => ['string', 'max:120'],
         ];
     }

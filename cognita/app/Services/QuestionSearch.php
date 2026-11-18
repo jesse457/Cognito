@@ -16,22 +16,20 @@ use Throwable;
  * Semantic search over question and answer bodies.
  *
  * A query is embedded once, then compared against the mixed post table with
- * cosine distance. The visible scope is applied in SQL before the nearest
- * neighbour limit, so a class-only question cannot leak into community search
- * results even if its vector is closer.
+ * cosine distance. An optional group filter is applied in SQL before the
+ * nearest neighbour limit, so an unrelated group cannot leak into results.
  */
 class QuestionSearch
 {
     public function __construct(private readonly PostEmbedder $embedder) {}
 
     /**
-     * @param  list<int>  $classroomIds
      * @return array{
      *     questions: list<array{question: Question, distance: float, kind: 'question'|'answer', excerpt: string, answer: Answer|null}>,
      *     answers: list<array{question: Question, answer: Answer, distance: float, excerpt: string}>
      * }
      */
-    public function search(string $term, bool $community, array $classroomIds, int $limit = 40): array
+    public function search(string $term, ?int $groupId, int $limit = 40): array
     {
         $term = trim($term);
 
@@ -47,7 +45,7 @@ class QuestionSearch
                 ->whereHasMorph(
                     'embeddable',
                     [Question::class],
-                    fn (Builder $query) => $this->scope($query, $community, $classroomIds),
+                    fn (Builder $query) => $this->scope($query, $groupId),
                 )
                 ->nearestNeighbors('embedding', $vector, Distance::Cosine)
                 ->with('embeddable')
@@ -61,7 +59,7 @@ class QuestionSearch
                     [Answer::class],
                     fn (Builder $query) => $query->whereHas(
                         'question',
-                        fn (Builder $question) => $this->scope($question, $community, $classroomIds),
+                        fn (Builder $question) => $this->scope($question, $groupId),
                     ),
                 )
                 ->nearestNeighbors('embedding', $vector, Distance::Cosine)
@@ -171,8 +169,6 @@ class QuestionSearch
             return [];
         }
 
-        $community = $question->isCommunity();
-
         try {
             $rows = PostEmbedding::query()
                 ->where('embeddable_type', Question::class)
@@ -180,9 +176,9 @@ class QuestionSearch
                 ->whereHasMorph(
                     'embeddable',
                     [Question::class],
-                    fn (Builder $query) => $community
-                        ? $query->community()
-                        : $query->classroom()->where('classroom_id', $question->classroom_id),
+                    fn (Builder $query) => $question->group_id === null
+                        ? $query->whereNull('group_id')
+                        : $query->where('group_id', $question->group_id),
                 )
                 ->nearestNeighbors('embedding', $embedding->embedding, Distance::Cosine)
                 ->with('embeddable')
@@ -212,15 +208,12 @@ class QuestionSearch
         return $related;
     }
 
-    /**
-     * @param  Builder<Question>  $query
-     * @param  list<int>  $classroomIds
-     */
-    private function scope(Builder $query, bool $community, array $classroomIds): void
+    /** @param  Builder<Question>  $query */
+    private function scope(Builder $query, ?int $groupId): void
     {
-        $community
-            ? $query->community()
-            : $query->classroom()->whereIn('classroom_id', $classroomIds);
+        if ($groupId !== null) {
+            $query->where('group_id', $groupId);
+        }
     }
 
     private function withinThreshold(float $distance): bool

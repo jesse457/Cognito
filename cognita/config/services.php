@@ -1,5 +1,7 @@
 <?php
 
+use App\Services\LiveKitProvider;
+
 return [
 
     /*
@@ -67,6 +69,31 @@ return [
         'api_secret' => env('LIVEKIT_API_SECRET'),
         'token_ttl' => (int) env('LIVEKIT_TOKEN_TTL', 3600),
         'room_prefix' => env('LIVEKIT_ROOM_PREFIX', 'cognita-class'),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Realtime provider
+    |--------------------------------------------------------------------------
+    |
+    | The group call is served by whichever provider class is named here.
+    | Everything the app needs from that class is declared in
+    | App\Contracts\RealtimeProvider, so replacing LiveKit with another SFU is
+    | a new adapter plus one line.
+    |
+    | The browser makes the same choice from the `driver` prop: each driver has
+    | a client adapter in resources/js/realtime.
+    |
+    |   livekit  - the bundled adapter, served by .dev/livekit.sh in development
+    |   local    - browser-only fallback: board over BroadcastChannel, no voice
+    |
+    */
+    'realtime' => [
+        'driver' => env('REALTIME_DRIVER', 'livekit'),
+
+        'drivers' => [
+            'livekit' => LiveKitProvider::class,
+        ],
     ],
 
 ];

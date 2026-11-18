@@ -103,7 +103,12 @@ class Classroom extends Model
         return $this->hasOne(ClassBoard::class);
     }
 
-    /** The board row, created on first use for classes made before it existed. */
+    /**
+     * The board of this class.
+     *
+     * Every class is created with its board, so this is a plain lookup; the
+     * create is the safety net for a class that somehow lost one.
+     */
     public function boardOrCreate(): ClassBoard
     {
         return $this->board()->firstOrCreate([], [
@@ -130,12 +135,6 @@ class Classroom extends Model
         return $this->hasMany(AttendanceRecord::class);
     }
 
-    /** Class questions and their answers. @return HasMany<Question, $this> */
-    public function questions(): HasMany
-    {
-        return $this->hasMany(Question::class);
-    }
-
     /** Live polls opened in this class. @return HasMany<Poll, $this> */
     public function polls(): HasMany
     {
@@ -150,7 +149,44 @@ class Classroom extends Model
 
     public function hasMember(User $student): bool
     {
+        if (
+            $this->relationLoaded('enrollments')
+            && $this->enrollments->contains(
+                static fn (Enrollment $enrollment): bool => (int) $enrollment->student_id === (int) $student->getKey(),
+            )
+        ) {
+            return true;
+        }
+
         return $this->enrollments()->where('student_id', $student->getKey())->exists();
+    }
+
+    /** The student's membership row, if they have joined this class. */
+    public function enrollmentFor(User $student): ?Enrollment
+    {
+        if ($this->relationLoaded('enrollments')) {
+            $enrollment = $this->enrollments->firstWhere('student_id', (int) $student->getKey());
+
+            if ($enrollment !== null) {
+                return $enrollment;
+            }
+        }
+
+        return $this->enrollments()->where('student_id', $student->getKey())->first();
+    }
+
+    /** Whether this class belongs to a course that charges for its live room. */
+    public function requiresPayment(): bool
+    {
+        return $this->course?->requiresPayment() ?? false;
+    }
+
+    /** Whether this student can enter the live room right now. */
+    public function hasPaidAccess(User $student): bool
+    {
+        $enrollment = $this->enrollmentFor($student);
+
+        return $enrollment !== null && $enrollment->grantsLiveAccess($this->course);
     }
 
     /** The LiveKit room name. Stable for the lifetime of the class. */

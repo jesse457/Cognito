@@ -30,7 +30,7 @@ class AttendanceExportController extends Controller
         /** @var User $instructor */
         $instructor = $request->user();
 
-        $this->access->assertInstructorOwnsClassroom($instructor, $classroom);
+        $this->authorize('exportAttendance', $classroom);
 
         $date = $this->attendance->date($request->query('date'));
         $report = $this->attendance->report($classroom, $date);

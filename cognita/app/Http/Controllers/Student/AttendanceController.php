@@ -38,6 +38,8 @@ class AttendanceController extends Controller
         /** @var User $student */
         $student = $request->user();
 
+        $this->authorize('viewAny', Classroom::class);
+
         $classrooms = $this->access->forStudent($student);
         $ids = $classrooms->pluck('id')->map(static fn ($id): int => (int) $id)->all();
         $classroomId = $request->integer('classroom') ?: null;
@@ -165,16 +167,6 @@ class AttendanceController extends Controller
 
     private function lastAttendedLabel(?string $date): string
     {
-        if ($date === null) {
-            return 'Not in a call yet';
-        }
-
-        $day = HumanTime::day(Carbon::parse($date));
-
-        return match ($day) {
-            'Today' => 'In the call today',
-            'Yesterday' => 'Last in class yesterday',
-            default => 'Last in class '.$day,
-        };
+        return HumanTime::lastAttended($date);
     }
 }

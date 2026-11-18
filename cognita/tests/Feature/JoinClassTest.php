@@ -87,6 +87,31 @@ class JoinClassTest extends TestCase
         ]);
     }
 
+    public function test_a_guest_key_survives_registration(): void
+    {
+        $classroom = Classroom::factory()->create(['join_code' => 'NEWKEY']);
+
+        $this->post('/join', ['key' => 'NEWKEY'])
+            ->assertSessionHas('pending_join_key', 'NEWKEY');
+
+        $this->post('/register', [
+            'name' => 'New Student',
+            'email' => 'new@cognita.test',
+            'password' => 'correct-horse',
+            'password_confirmation' => 'correct-horse',
+        ])->assertRedirect(route('dashboard'));
+
+        $this->get('/dashboard')
+            ->assertRedirect(route('call.show', ['classroom' => $classroom->id]));
+
+        $student = User::query()->where('email', 'new@cognita.test')->firstOrFail();
+
+        $this->assertDatabaseHas('enrollments', [
+            'classroom_id' => $classroom->id,
+            'student_id' => $student->id,
+        ]);
+    }
+
     public function test_instructors_do_not_join_with_a_key(): void
     {
         $instructor = User::factory()->instructor()->create();

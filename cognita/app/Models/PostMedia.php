@@ -11,9 +11,9 @@ use Illuminate\Database\Eloquent\Relations\MorphTo;
 /**
  * A photo attached to a question or an answer.
  *
- * Files live on the private local disk and are streamed through an access
- * checked route, so a photo in a class-only question cannot be fetched by
- * guessing its URL.
+ * The bytes live on the media disk and are streamed through an access checked
+ * route, so a photo in a class-only question cannot be fetched by guessing
+ * its URL.
  */
 class PostMedia extends Model
 {
@@ -22,6 +22,7 @@ class PostMedia extends Model
         'user_id',
         'name',
         'path',
+        'disk',
         'mime',
         'size',
     ];

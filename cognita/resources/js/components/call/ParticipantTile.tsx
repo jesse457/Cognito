@@ -25,7 +25,7 @@ export default function ParticipantTile({
                 className={cn(
                     'tile-in flex w-[132px] shrink-0 items-center gap-2 rounded-xl border px-2 py-1.5 transition-colors duration-200 lg:w-full',
                     participant.isSpeaking
-                        ? 'speaking-glow border-live/60 bg-live/10'
+                        ? 'speaking-glow border-stage-live/60 bg-stage-live/10'
                         : 'border-stage-line bg-stage-raised',
                 )}
             >
@@ -41,7 +41,7 @@ export default function ParticipantTile({
                     <HandPalm size={13} weight="fill" className="hand-wave shrink-0 text-stage-warn" aria-label="Hand raised" />
                 ) : null}
                 {participant.screenShare !== null ? (
-                    <MonitorArrowUp size={13} className="shrink-0 text-brand" aria-label="Sharing screen" />
+                    <MonitorArrowUp size={13} className="shrink-0 text-stage-live" aria-label="Sharing screen" />
                 ) : null}
                 {!participant.micEnabled ? (
                     <MicrophoneSlash size={13} className="shrink-0 text-stage-ink/45" aria-label="Muted" />
@@ -67,11 +67,11 @@ export default function ParticipantTile({
             </span>
 
             {handRaised ? (
-                <span className="absolute top-2 right-2 rounded-full bg-warn-soft p-1 text-warn" title="Hand raised">
+                <span className="absolute top-2 right-2 rounded-full bg-stage-warn/20 p-1 text-stage-warn" title="Hand raised">
                     <HandPalm size={14} weight="fill" className="hand-wave" aria-hidden="true" />
                 </span>
             ) : !participant.micEnabled ? (
-                <span className="absolute top-2 right-2 rounded-full bg-black/50 p-1 text-stage-ink/70" title="Muted">
+                <span className="absolute top-2 right-2 rounded-full bg-stage/75 p-1 text-stage-ink/70" title="Muted">
                     <MicrophoneSlash size={14} aria-hidden="true" />
                 </span>
             ) : null}
@@ -80,7 +80,7 @@ export default function ParticipantTile({
                 name={participant.name}
                 size="lg"
                 tone="stage"
-                className={participant.isSpeaking ? 'bg-live text-live-ink' : undefined}
+                className={participant.isSpeaking ? 'bg-stage-live text-stage' : undefined}
             />
             <p className="call-name mt-2 max-w-[90%] truncate">
                 {participant.name}

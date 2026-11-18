@@ -13,9 +13,9 @@ use App\Models\User;
 use App\Services\AttendanceTracker;
 use App\Services\BoardSessions;
 use App\Services\ClassroomAccess;
+use App\Services\LearningOverview;
 use App\Support\HumanTime;
 use Illuminate\Support\Arr;
-use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -38,7 +38,10 @@ class DashboardController extends Controller
         ClassroomAccess $access,
         BoardSessions $rooms,
         AttendanceTracker $attendance,
+        LearningOverview $learning,
     ): Response {
+        $this->authorize('viewInstructorDashboard', User::class);
+
         /** @var User $instructor */
         $instructor = request()->user();
 
@@ -48,6 +51,7 @@ class DashboardController extends Controller
         $liveIds = $rooms->liveAmong($classroomIds);
         $inCall = $attendance->presentNowByClassroom($classroomIds);
         $history = $this->roomHistory($classroomIds);
+        $nextSessions = $rooms->nextScheduledAmong($classroomIds);
 
         $courses = $instructor->courses()
             ->withCount('classrooms')
@@ -55,6 +59,7 @@ class DashboardController extends Controller
             ->get();
 
         return Inertia::render('Instructor/Dashboard', [
+            'learning' => $learning->forInstructor($instructor),
             'stats' => [
                 'live_classes' => count($liveIds),
                 'in_call' => array_sum($inCall),
@@ -69,6 +74,12 @@ class DashboardController extends Controller
                     'title' => $course->title,
                     'description' => $course->description,
                     'classrooms_count' => (int) $course->classrooms_count,
+                    'is_paid' => $course->requiresPayment(),
+                    'price_cents' => (int) $course->price_cents,
+                    'currency' => $course->currency,
+                    'price_label' => $course->requiresPayment() ? $course->priceLabel() : null,
+                    'payment_url' => $course->payment_url,
+                    'payment_instructions' => $course->payment_instructions,
                     'students' => (int) $classrooms
                         ->where('course_id', (int) $course->getKey())
                         ->sum('enrollments_count'),
@@ -85,6 +96,7 @@ class DashboardController extends Controller
                     'live' => in_array((int) $classroom->getKey(), $liveIds, true),
                     'in_call' => (int) ($inCall[(int) $classroom->getKey()] ?? 0),
                     'last_session' => $this->lastSessionLabel($classroom, $liveIds, $history),
+                    'next_session' => $this->nextSession($nextSessions->get((int) $classroom->getKey())),
                     'call_url' => route('call.show', ['classroom' => $classroom->getKey()]),
                     'class_url' => route('instructor.classes.show', ['classroom' => $classroom->getKey()]),
                     'attendance_url' => route('instructor.classes.attendance', [
@@ -95,6 +107,25 @@ class DashboardController extends Controller
                 ->all(),
             'activity' => $this->activity($classroomIds),
         ]);
+    }
+
+    /**
+     * The next session the instructor announced for this class, if any.
+     *
+     * @return array{when: string, until: string, state: string}|null
+     */
+    private function nextSession(?CallSession $session): ?array
+    {
+        if ($session === null) {
+            return null;
+        }
+
+        return [
+            'when' => HumanTime::dayAt($session->starts_at),
+            'until' => HumanTime::until($session->starts_at),
+            'state' => $session->state(),
+            'materials' => $session->materials->map->materialReference()->values()->all(),
+        ];
     }
 
     /**
@@ -140,17 +171,12 @@ class DashboardController extends Controller
      */
     private function lastSessionLabel(Classroom $classroom, array $liveIds, Collection $history): string
     {
-        if (in_array((int) $classroom->getKey(), $liveIds, true)) {
-            return 'Room is open';
-        }
-
         $row = $history->get((int) $classroom->getKey());
 
-        if ($row === null) {
-            return 'Not opened yet';
-        }
-
-        return 'Last open '.HumanTime::ago(Carbon::parse((string) $row->last_seen_at));
+        return HumanTime::lastOpened(
+            in_array((int) $classroom->getKey(), $liveIds, true),
+            $row === null ? null : (string) $row->last_seen_at,
+        );
     }
 
     /**

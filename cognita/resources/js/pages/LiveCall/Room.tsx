@@ -11,7 +11,7 @@ import CommentsPanel from '@/components/call/CommentsPanel';
 import PeoplePanel from '@/components/call/PeoplePanel';
 import PollsPanel from '@/components/call/PollsPanel';
 import ConfirmDialog, { type ConfirmRequest } from '@/components/ui/ConfirmDialog';
-import { useToast } from '@/components/ui/Toast';
+import { reportError, useToast } from '@/components/ui/Toast';
 import { useBoard, type BoardApi } from '@/hooks/useBoard';
 import { useCall } from '@/hooks/useCall';
 import { usePolls } from '@/hooks/usePolls';
@@ -32,11 +32,23 @@ import {
     type PresenceFrame,
     type RealtimeConfig,
 } from '@/realtime';
-import type { BoardState, CommentEntry, RoomStudent } from '@/types';
+import type { BoardState, CommentEntry, PaymentState, RoomStudent, SessionState } from '@/types';
 
 interface RoomPageProps {
     classroom: { id: number; name: string; join_code: string; course: string | null; instructor: string | null };
     role: CallRole;
+    /** The state of the session this room belongs to. */
+    session: {
+        state: SessionState;
+        id: number | null;
+        title: string | null;
+        description: string | null;
+        starts_at: string | null;
+        ends_at: string | null;
+        host: string | null;
+    };
+    /** Whether the live room is unlocked for this viewer. */
+    payment: PaymentState;
     viewerId: number;
     viewerName: string;
     students: RoomStudent[];
@@ -65,6 +77,8 @@ const COPY_FEEDBACK_MS = 1_600;
 export default function LiveCallRoom({
     classroom,
     role,
+    session,
+    payment,
     viewerId,
     viewerName,
     students: initialStudents,
@@ -106,7 +120,6 @@ export default function LiveCallRoom({
         participants: new Map<string, string>(),
         hands: new Set<string>(),
         session: initialBoard.session,
-        annotate: initialBoard.studentsCanAnnotate,
         share: null as string | null,
         error: null as string | null,
     });
@@ -197,6 +210,10 @@ export default function LiveCallRoom({
         },
     });
     boardRef.current = board;
+
+    // Whether this browser held the pen on the previous render, so a handover
+    // is announced once and only once.
+    const penSeen = useRef(board.canDraw);
 
     const state = board.board;
     const hands = useMemo(
@@ -453,21 +470,21 @@ export default function LiveCallRoom({
         });
     }, [sharing, boardOpen, call.identity, toast]);
 
+    // The instructor hands the pen to one student at a time, so the cue is
+    // about this browser: the pen arrived, or it was taken back.
     useEffect(() => {
-        const before = seen.current.annotate;
-        seen.current.annotate = state.studentsCanAnnotate;
+        const before = penSeen.current;
+        penSeen.current = board.canDraw;
 
-        if (before === state.studentsCanAnnotate || canManageBoard) {
+        if (before === board.canDraw || canManageBoard) {
             return;
         }
 
-        if (state.studentsCanAnnotate) {
-            if (board.canDraw) {
-                playCue('pen');
-            }
+        if (board.canDraw) {
+            playCue('pen');
 
             toast.push({
-                title: board.canDraw ? 'You can draw now' : 'Students can draw now',
+                title: 'You can draw now',
                 description: 'Pick a pen from the board toolbar.',
                 tone: 'success',
                 duration: 6_000,
@@ -477,7 +494,7 @@ export default function LiveCallRoom({
         }
 
         toast.push({ title: 'The pen is back with the instructor', tone: 'info' });
-    }, [state.studentsCanAnnotate, canManageBoard, board.canDraw, toast]);
+    }, [board.canDraw, canManageBoard, toast]);
 
     useEffect(() => {
         if (call.error === null || call.error === seen.current.error) {
@@ -712,11 +729,7 @@ export default function LiveCallRoom({
                             playCue('leave');
                             toast.push({ title: `${participant.name} was removed from the call`, tone: 'success' });
                         } catch (error) {
-                            toast.push({
-                                title: 'That did not work',
-                                description: error instanceof ApiError ? error.message : 'Please try again.',
-                                tone: 'error',
-                            });
+                            reportError(toast.push, error);
                         } finally {
                             setKicking(null);
                         }
@@ -748,11 +761,7 @@ export default function LiveCallRoom({
                         tone: 'info',
                     });
                 } catch (error) {
-                    toast.push({
-                        title: 'That did not work',
-                        description: error instanceof ApiError ? error.message : 'Please try again.',
-                        tone: 'error',
-                    });
+                    reportError(toast.push, error);
                 } finally {
                     setPermissionBusy(null);
                 }
@@ -788,11 +797,7 @@ export default function LiveCallRoom({
                         tone: 'info',
                     });
                 } catch (error) {
-                    toast.push({
-                        title: 'That did not work',
-                        description: error instanceof ApiError ? error.message : 'Please try again.',
-                        tone: 'error',
-                    });
+                    reportError(toast.push, error);
                 } finally {
                     setDrawBusy(null);
                 }
@@ -983,7 +988,6 @@ export default function LiveCallRoom({
                     students={students}
                     canManage={canManageBoard}
                     canManageAudio={canManageAudio}
-                    studentsCanAnnotate={state.studentsCanAnnotate}
                     selectedDrawers={state.allowedDrawerIds.length}
                     boardSurface={state.surface}
                     drawBusy={drawBusy}
@@ -991,7 +995,6 @@ export default function LiveCallRoom({
                     permissionBusy={permissionBusy}
                     mediaPath={call.mediaPath}
                     onClose={() => setPanel(null)}
-                    onToggleStudents={board.toggleStudents}
                     onToggleStudentDrawing={toggleStudentDrawing}
                     onSetTalkPermission={setTalkPermission}
                     onRemove={removeParticipant}
@@ -1105,6 +1108,13 @@ export default function LiveCallRoom({
                             <CallLobby
                                 classroom={classroom}
                                 role={role}
+                                sessionState={session.state}
+                                sessionTitle={session.title}
+                                sessionDescription={session.description}
+                                sessionStartsAt={session.starts_at}
+                                payment={payment}
+                                touchUrl={realtime.touchUrl}
+                                backUrl={backUrl}
                                 driver={call.driver}
                                 previewOnly={call.previewOnly}
                                 secureContext={secureContext}

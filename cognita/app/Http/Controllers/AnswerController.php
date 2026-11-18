@@ -5,17 +5,16 @@ declare(strict_types=1);
 namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreAnswerRequest;
+use App\Http\Requests\VoteRequest;
 use App\Models\Answer;
 use App\Models\Question;
 use App\Models\User;
-use App\Services\ClassroomAccess;
 use App\Services\PostMediaStore;
+use App\Services\VoteCaster;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
-use Illuminate\Validation\ValidationException;
 
 /**
  * Answers hang off questions, so every action resolves the question first and
@@ -27,13 +26,12 @@ class AnswerController extends Controller
     public function store(
         StoreAnswerRequest $request,
         Question $question,
-        ClassroomAccess $access,
         PostMediaStore $mediaStore,
     ): RedirectResponse {
         /** @var User $user */
         $user = $request->user();
 
-        $access->assertQuestionAccess($user, $question);
+        $this->authorize('create', [Answer::class, $question]);
 
         /** @var array{body: string, media?: array<int, mixed>} $data */
         $data = $request->validated();
@@ -49,55 +47,29 @@ class AnswerController extends Controller
             ->with('success', 'Answer posted. Thanks for helping a classmate.');
     }
 
-    public function vote(Request $request, Answer $answer, ClassroomAccess $access): JsonResponse
+    public function vote(VoteRequest $request, Answer $answer, VoteCaster $votes): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
-        $access->assertQuestionAccess($user, $answer->question);
+        $this->authorize('vote', $answer);
 
         /** @var array{value: int} $data */
-        $data = $request->validate([
-            'value' => ['required', 'integer', Rule::in([-1, 0, 1])],
-        ]);
-
-        if ((int) $answer->user_id === (int) $user->getKey()) {
-            throw ValidationException::withMessages([
-                'vote' => 'You cannot vote on your own answer.',
-            ]);
-        }
-
-        $value = (int) $data['value'];
-
-        if ($value === 0) {
-            $answer->votes()->where('user_id', $user->getKey())->delete();
-        } else {
-            $answer->votes()->updateOrCreate(
-                ['user_id' => $user->getKey()],
-                ['value' => $value],
-            );
-        }
+        $data = $request->validated();
 
         return response()->json([
-            'data' => [
-                'score' => (int) $answer->votes()->sum('value'),
-                'vote' => $value,
-            ],
+            'data' => $votes->cast($answer, $user, (int) $data['value'], 'answer'),
         ]);
     }
 
-    public function accept(Request $request, Answer $answer, ClassroomAccess $access): JsonResponse
+    public function accept(Request $request, Answer $answer): JsonResponse
     {
         /** @var User $user */
         $user = $request->user();
 
         $question = $answer->question;
 
-        $access->assertQuestionAccess($user, $question);
-
-        if ((int) $question->user_id !== (int) $user->getKey()) {
-            abort(403, 'Only the person who asked can mark an accepted answer.');
-        }
+        $this->authorize('accept', $answer);
 
         $acceptedAnswerId = DB::transaction(function () use ($answer, $question): ?int {
             $accepted = ! $answer->is_accepted;

@@ -5,8 +5,7 @@ declare(strict_types=1);
 namespace Tests\Feature;
 
 use App\Models\Answer;
-use App\Models\Classroom;
-use App\Models\Enrollment;
+use App\Models\Group;
 use App\Models\PostMedia;
 use App\Models\Question;
 use App\Models\User;
@@ -19,67 +18,19 @@ class QuestionMediaTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function enroll(User $student, Classroom $classroom): void
-    {
-        Enrollment::query()->create([
-            'classroom_id' => $classroom->getKey(),
-            'student_id' => $student->getKey(),
-            'joined_at' => now(),
-        ]);
-    }
-
-    private function ask(User $author, Classroom $classroom, array $media = []): Question
+    private function ask(User $author, array $media = [], ?Group $group = null): Question
     {
         $this->actingAs($author)->post('/questions', [
-            'scope' => 'class',
-            'classroom_id' => $classroom->getKey(),
-            'title' => 'Which force is missing from my diagram?',
-            'body' => 'I have attached the free-body diagram I drew.',
+            'group_id' => $group?->getKey(),
+            'title' => 'How do I read this diagram?',
+            'body' => 'The photo shows the part I am stuck on.',
             'media' => $media,
         ])->assertRedirect();
 
         return Question::query()->latest('id')->firstOrFail();
     }
 
-    public function test_question_photos_are_private_to_the_class(): void
-    {
-        Storage::fake('local');
-
-        $author = User::factory()->student()->create();
-        $classmate = User::factory()->student()->create();
-        $outsider = User::factory()->student()->create();
-        $classroom = Classroom::factory()->create();
-
-        $this->enroll($author, $classroom);
-        $this->enroll($classmate, $classroom);
-
-        $question = $this->ask($author, $classroom, [
-            UploadedFile::fake()->image('free-body.png', 800, 600),
-        ]);
-
-        $media = PostMedia::query()->firstOrFail();
-
-        $this->assertSame($question->getKey(), (int) $media->mediable_id);
-        $this->assertSame('image/png', $media->mime);
-        Storage::disk('local')->assertExists($media->path);
-
-        $url = route('questions.media.show', ['media' => $media->getKey()], absolute: false);
-
-        $this->actingAs($classmate)
-            ->get($url)
-            ->assertOk()
-            ->assertHeader('Content-Type', 'image/png');
-
-        $this->actingAs($outsider)
-            ->get($url)
-            ->assertForbidden();
-
-        auth()->logout();
-
-        $this->get($url)->assertRedirect(route('login'));
-    }
-
-    public function test_community_photos_are_open_to_every_signed_in_member(): void
+    public function test_general_post_photos_are_open_to_every_signed_in_learner(): void
     {
         Storage::fake('local');
 
@@ -88,19 +39,37 @@ class QuestionMediaTest extends TestCase
         $instructor = User::factory()->instructor()->create();
         $admin = User::factory()->admin()->create();
 
-        $this->actingAs($author)->post('/questions', [
-            'scope' => 'community',
-            'title' => 'How do I read this phase diagram?',
-            'body' => 'The photo shows the region I am stuck in.',
-            'media' => [UploadedFile::fake()->image('phase.jpg', 900, 700)],
-        ])->assertRedirect();
-
+        $question = $this->ask($author, [UploadedFile::fake()->image('phase.jpg', 900, 700)]);
         $media = PostMedia::query()->firstOrFail();
         $url = route('questions.media.show', ['media' => $media->getKey()], absolute: false);
 
-        $this->actingAs($otherStudent)->get($url)->assertOk();
+        $this->assertSame($question->getKey(), (int) $media->mediable_id);
+        Storage::disk('local')->assertExists($media->path);
+
+        $this->actingAs($otherStudent)->get($url)->assertOk()->assertHeader('Content-Type', 'image/jpeg');
         $this->actingAs($instructor)->get($url)->assertOk();
         $this->actingAs($admin)->get($url)->assertForbidden();
+
+        auth()->logout();
+
+        $this->get($url)->assertRedirect(route('login'));
+    }
+
+    public function test_group_post_photos_are_readable_by_any_learner(): void
+    {
+        Storage::fake('local');
+
+        $author = User::factory()->student()->create();
+        $outsider = User::factory()->student()->create();
+        $group = Group::factory()->create(['creator_id' => $author->getKey()]);
+        $group->members()->attach($author, ['joined_at' => now()]);
+
+        $this->ask($author, [UploadedFile::fake()->image('group.png', 800, 600)], $group);
+        $media = PostMedia::query()->firstOrFail();
+
+        $this->actingAs($outsider)
+            ->get(route('questions.media.show', ['media' => $media->getKey()], absolute: false))
+            ->assertOk();
     }
 
     public function test_answer_photos_are_stored_and_returned_with_the_thread(): void
@@ -108,20 +77,15 @@ class QuestionMediaTest extends TestCase
         Storage::fake('local');
 
         $author = User::factory()->student()->create();
-        $classmate = User::factory()->student()->create();
-        $classroom = Classroom::factory()->create();
+        $answerer = User::factory()->student()->create();
+        $question = $this->ask($author);
 
-        $this->enroll($author, $classroom);
-        $this->enroll($classmate, $classroom);
-
-        $question = $this->ask($author, $classroom);
-
-        $this->actingAs($classmate)
-            ->post("/questions/{$question->id}/answers", [
+        $this->actingAs($answerer)
+            ->post("/questions/{$question->getKey()}/answers", [
                 'body' => 'Here is the corrected diagram.',
                 'media' => [UploadedFile::fake()->image('corrected.webp', 640, 480)],
             ])
-            ->assertRedirect(route('questions.show', ['question' => $question->id]));
+            ->assertRedirect(route('questions.show', ['question' => $question->getKey()]));
 
         $answer = Answer::query()->firstOrFail();
         $media = PostMedia::query()->firstOrFail();
@@ -130,7 +94,7 @@ class QuestionMediaTest extends TestCase
         Storage::disk('local')->assertExists($media->path);
 
         $this->actingAs($author)
-            ->get("/questions/{$question->id}")
+            ->get("/questions/{$question->getKey()}")
             ->assertOk()
             ->assertInertia(fn ($page) => $page
                 ->has('question.media', 0)
@@ -146,12 +110,9 @@ class QuestionMediaTest extends TestCase
         Storage::fake('local');
 
         $student = User::factory()->student()->create();
-        $classroom = Classroom::factory()->create();
-        $this->enroll($student, $classroom);
 
         $this->actingAs($student)
             ->post('/questions', [
-                'classroom_id' => $classroom->getKey(),
                 'title' => 'A photo of my notes',
                 'body' => 'It is a text file, not a picture.',
                 'media' => [UploadedFile::fake()->create('notes.txt', 4, 'text/plain')],
@@ -166,7 +127,6 @@ class QuestionMediaTest extends TestCase
 
         $this->actingAs($student)
             ->post('/questions', [
-                'classroom_id' => $classroom->getKey(),
                 'title' => 'Too many photos',
                 'body' => 'Six pages is more than the limit.',
                 'media' => $images,

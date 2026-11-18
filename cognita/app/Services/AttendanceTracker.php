@@ -219,7 +219,7 @@ class AttendanceTracker
 
         $records = AttendanceRecord::query()
             ->where('classroom_id', $classroom->getKey())
-            ->whereDate('attended_on', $date)
+            ->where('attended_on', $date)
             ->get()
             ->groupBy('user_id');
 

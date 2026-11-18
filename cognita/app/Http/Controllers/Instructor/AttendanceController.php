@@ -45,6 +45,8 @@ class AttendanceController extends Controller
         /** @var User $instructor */
         $instructor = $request->user();
 
+        $this->authorize('viewAny', Classroom::class);
+
         $classrooms = $this->access->forInstructor($instructor);
         $ids = $classrooms->pluck('id')->map(static fn ($id): int => (int) $id)->all();
         $date = $this->attendance->date($request->query('date'));
@@ -52,7 +54,7 @@ class AttendanceController extends Controller
 
         $records = AttendanceRecord::query()
             ->whereIn('classroom_id', $ids)
-            ->whereDate('attended_on', $date)
+            ->where('attended_on', $date)
             ->get()
             ->groupBy(static fn (AttendanceRecord $record): int => (int) $record->classroom_id);
 
@@ -112,7 +114,7 @@ class AttendanceController extends Controller
         /** @var User $instructor */
         $instructor = $request->user();
 
-        $this->access->assertInstructorOwnsClassroom($instructor, $classroom);
+        $this->authorize('viewAttendance', $classroom);
 
         $classroom->load('course:id,title');
 

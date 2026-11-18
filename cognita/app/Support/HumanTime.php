@@ -104,6 +104,68 @@ final class HumanTime
         return $at->copy()->format('D j M');
     }
 
+    /**
+     * A moment that is still to come: "in 20 min", "Today · 15:00",
+     * "Tomorrow · 09:00", then a date for anything further out.
+     */
+    public static function until(?CarbonInterface $at): string
+    {
+        if ($at === null) {
+            return 'Not scheduled';
+        }
+
+        $now = Carbon::now();
+        $delta = $at->getTimestamp() - $now->getTimestamp();
+
+        if ($delta <= 0) {
+            return self::dayAt($at);
+        }
+
+        if ($delta < 3600) {
+            return 'in '.max(1, intdiv($delta, 60)).' min';
+        }
+
+        if ($at->isSameDay($now)) {
+            return 'Today · '.$at->copy()->format('H:i');
+        }
+
+        if ($at->isSameDay($now->copy()->addDay())) {
+            return 'Tomorrow · '.$at->copy()->format('H:i');
+        }
+
+        return $at->copy()->format('D j M · H:i');
+    }
+
+    /** The label a student dashboard shows for their last attended class. */
+    public static function lastAttended(?string $date): string
+    {
+        if ($date === null) {
+            return 'Not in a call yet';
+        }
+
+        $day = self::day(Carbon::parse($date));
+
+        return match ($day) {
+            'Today' => 'In the call today',
+            'Yesterday' => 'Last in class yesterday',
+            default => 'Last in class '.$day,
+        };
+    }
+
+    /** The label an instructor card shows for a class's most recent room. */
+    public static function lastOpened(bool $isLive, ?string $at): string
+    {
+        if ($isLive) {
+            return 'Room is open';
+        }
+
+        if ($at === null) {
+            return 'Not opened yet';
+        }
+
+        return 'Last open '.self::ago(Carbon::parse($at));
+    }
+
     /** "Today · 09:12", the label an attendance row wants. */
     public static function dayAt(?CarbonInterface $at): string
     {

@@ -7,13 +7,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 
 /**
  * A PDF that belongs to a class, independent of the board currently showing it.
  *
  * Uploads are kept in this library instead of being replaced, so an instructor
  * can put a deck back on the board later without uploading it again. The file
- * itself lives on the board disk; this row holds its metadata and a stable URL.
+ * itself lives on the media disk; this row holds its metadata, the disk it is
+ * on and a stable URL.
  */
 class ClassDocument extends Model
 {
@@ -25,6 +27,7 @@ class ClassDocument extends Model
         'uploaded_by',
         'name',
         'path',
+        'disk',
         'pages',
         'size',
         'checksum',
@@ -51,6 +54,32 @@ class ClassDocument extends Model
     public function uploader(): BelongsTo
     {
         return $this->belongsTo(User::class, 'uploaded_by');
+    }
+
+    /** @return BelongsToMany<CallSession, $this> */
+    public function sessions(): BelongsToMany
+    {
+        return $this->belongsToMany(CallSession::class, 'session_materials')
+            ->withTimestamps();
+    }
+
+    /**
+     * The document as a student sees it on an announced session.
+     *
+     * @return array{id: int, name: string, pages: int, size: int, url: string}
+     */
+    public function materialReference(): array
+    {
+        return [
+            'id' => (int) $this->getKey(),
+            'name' => (string) $this->name,
+            'pages' => max(1, (int) $this->pages),
+            'size' => max(0, (int) $this->size),
+            'url' => route('board.documents.show', [
+                'classroom' => $this->classroom_id,
+                'document' => $this->getKey(),
+            ]),
+        ];
     }
 
     /**

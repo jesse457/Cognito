@@ -27,7 +27,7 @@ class AuthTest extends TestCase
             'password_confirmation' => 'correct-horse',
         ]);
 
-        $response->assertRedirect(route('student.home'));
+        $response->assertRedirect(route('dashboard'));
         $this->assertAuthenticated();
 
         $this->assertDatabaseHas('users', [
@@ -39,11 +39,11 @@ class AuthTest extends TestCase
     public function test_sign_in_routes_each_role_to_its_own_surface(): void
     {
         foreach ([
-            UserRole::Admin->value => 'admin.dashboard',
-            UserRole::Instructor->value => 'instructor.dashboard',
-            UserRole::Student->value => 'student.home',
-        ] as $role => $routeName) {
-            $user = User::factory()->create(['password' => 'password', 'role' => $role]);
+            UserRole::Admin->value => ['admin.dashboard', User::factory()->admin()],
+            UserRole::Instructor->value => ['instructor.dashboard', User::factory()->instructor()],
+            UserRole::Student->value => ['student.home', User::factory()->student()],
+        ] as [$routeName, $factory]) {
+            $user = $factory->create();
 
             $this->post('/login', ['email' => $user->email, 'password' => 'password'])
                 ->assertRedirect(route('dashboard'));

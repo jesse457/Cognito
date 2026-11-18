@@ -9,10 +9,10 @@ export default function Pagination({ paginator }: { paginator: Paginated<unknown
     const links = paginator.links.filter((link) => !link.label.includes('&laquo;') && !link.label.includes('&raquo;'));
 
     return (
-        <nav className="flex flex-wrap items-center gap-1.5 px-5 py-3" aria-label="Pagination">
+        <nav className="flex flex-wrap items-center gap-1.5 border-t border-line px-4 py-2.5" aria-label="Pagination">
             {links.map((link) =>
                 link.url === null ? (
-                    <span key={link.label} className="rounded-full px-3 py-1.5 text-sm text-ink-soft">
+                    <span key={link.label} className="rounded-md px-3 py-1.5 text-[13px] text-ink-soft">
                         {link.label}
                     </span>
                 ) : (
@@ -27,7 +27,7 @@ export default function Pagination({ paginator }: { paginator: Paginated<unknown
                     </Link>
                 ),
             )}
-            <span className="ml-auto text-xs text-ink-muted tabular">
+            <span className="ml-auto text-[12px] text-ink-muted tabular">
                 {paginator.from ?? 0}–{paginator.to ?? 0} of {paginator.total}
             </span>
         </nav>

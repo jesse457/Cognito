@@ -14,7 +14,6 @@ export interface BoardPatch {
     surface?: BoardSurface;
     page?: number;
     pages?: number;
-    students_can_annotate?: boolean;
 }
 
 export interface SaveOptions {
@@ -31,8 +30,8 @@ export interface BoardSync {
 /**
  * Saving the board, batched.
  *
- * Only settings reach this file — surface, page, page count, the draw
- * permission — so a lesson usually produces a handful of requests in total. A
+ * Only settings reach this file — surface, page and page count — so a lesson
+ * usually produces a handful of requests in total. A
  * fast hand produces none at all: strokes are realtime frames and are gone when
  * the room closes.
  */
