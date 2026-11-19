@@ -1,0 +1,76 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 620" role="img" aria-labelledby="mapTitle mapDesc">
+  <title id="mapTitle">Cognita at a glance</title>
+  <desc id="mapDesc">Three role lanes, administrator, instructor and student, above two shared spaces: the community and the live room.</desc>
+
+  <rect width="1200" height="620" fill="#f1f3f7"/>
+
+  <g font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+    <text x="48" y="58" font-size="28" font-weight="700" fill="#0b0d12">Cognita at a glance</text>
+    <text x="48" y="86" font-size="15" fill="#4c5563">Three roles, a shared community, and one live room.</text>
+
+    <!-- Administrator -->
+    <rect x="48" y="118" width="352" height="218" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="72" y="140" width="132" height="28" rx="14" fill="#fbefda"/>
+    <circle cx="88" cy="154" r="4" fill="#8d5607"/>
+    <text x="100" y="159" font-size="12.5" font-weight="600" fill="#8d5607">Administrator</text>
+    <text x="72" y="200" font-size="18" font-weight="600" fill="#0b0d12">Admin console</text>
+    <circle cx="76" cy="221" r="2.5" fill="#8d5607"/>
+    <text x="90" y="226" font-size="13" fill="#4c5563">Accounts and roles</text>
+    <circle cx="76" cy="247" r="2.5" fill="#8d5607"/>
+    <text x="90" y="252" font-size="13" fill="#4c5563">Course catalogue</text>
+    <circle cx="76" cy="273" r="2.5" fill="#8d5607"/>
+    <text x="90" y="278" font-size="13" fill="#4c5563">Class inventory</text>
+    <text x="72" y="316" font-size="11.5" fill="#6e7787">People, courses and classes at a glance.</text>
+
+    <!-- Instructor -->
+    <rect x="424" y="118" width="352" height="218" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="448" y="140" width="108" height="28" rx="14" fill="#e8edfd"/>
+    <circle cx="464" cy="154" r="4" fill="#1f4ae0"/>
+    <text x="476" y="159" font-size="12.5" font-weight="600" fill="#173ab4">Instructor</text>
+    <text x="448" y="200" font-size="18" font-weight="600" fill="#0b0d12">Teaching dashboard</text>
+    <circle cx="452" cy="221" r="2.5" fill="#1f4ae0"/>
+    <text x="466" y="226" font-size="13" fill="#4c5563">Courses and curriculum</text>
+    <circle cx="452" cy="247" r="2.5" fill="#1f4ae0"/>
+    <text x="466" y="252" font-size="13" fill="#4c5563">Classes and join keys</text>
+    <circle cx="452" cy="273" r="2.5" fill="#1f4ae0"/>
+    <text x="466" y="278" font-size="13" fill="#4c5563">Attendance and exports</text>
+    <text x="448" y="316" font-size="11.5" fill="#6e7787">Build the material, then open the room.</text>
+
+    <!-- Student -->
+    <rect x="800" y="118" width="352" height="218" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="824" y="140" width="88" height="28" rx="14" fill="#dff4ea"/>
+    <circle cx="840" cy="154" r="4" fill="#0d8a52"/>
+    <text x="852" y="159" font-size="12.5" font-weight="600" fill="#0a6b40">Student</text>
+    <text x="824" y="200" font-size="18" font-weight="600" fill="#0b0d12">My classes</text>
+    <circle cx="828" cy="221" r="2.5" fill="#0d8a52"/>
+    <text x="842" y="226" font-size="13" fill="#4c5563">Join a class with a key</text>
+    <circle cx="828" cy="247" r="2.5" fill="#0d8a52"/>
+    <text x="842" y="252" font-size="13" fill="#4c5563">Lessons and progress</text>
+    <circle cx="828" cy="273" r="2.5" fill="#0d8a52"/>
+    <text x="842" y="278" font-size="13" fill="#4c5563">Attendance and materials</text>
+    <text x="824" y="316" font-size="11.5" fill="#6e7787">One key opens the class and its lessons.</text>
+
+    <!-- Shared spaces -->
+    <text x="48" y="372" font-size="11" font-weight="600" letter-spacing="1.6" fill="#6e7787">SHARED SPACES</text>
+
+    <rect x="48" y="388" width="540" height="150" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="72" y="406" width="118" height="26" rx="13" fill="#ece9fd"/>
+    <circle cx="88" cy="419" r="4" fill="#6b4ee6"/>
+    <text x="100" y="424" font-size="12.5" font-weight="600" fill="#5a3fd0">Community</text>
+    <text x="72" y="462" font-size="18" font-weight="600" fill="#0b0d12">Feed, groups and courses</text>
+    <text x="72" y="486" font-size="13" fill="#4c5563">Ask questions, form groups, and learn from a</text>
+    <text x="72" y="506" font-size="13" fill="#4c5563">library of free and paid courses.</text>
+    <text x="72" y="528" font-size="11.5" fill="#6e7787">Open to every student and instructor.</text>
+
+    <rect x="612" y="388" width="540" height="150" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="636" y="406" width="104" height="26" rx="13" fill="#e8edfd"/>
+    <circle cx="652" cy="419" r="4" fill="#1f4ae0"/>
+    <text x="664" y="424" font-size="12.5" font-weight="600" fill="#173ab4">Live room</text>
+    <text x="636" y="462" font-size="18" font-weight="600" fill="#0b0d12">Call, board and polls</text>
+    <text x="636" y="486" font-size="13" fill="#4c5563">One voice room per class with a shared board,</text>
+    <text x="636" y="506" font-size="13" fill="#4c5563">timed polls and a register that writes itself.</text>
+    <text x="636" y="528" font-size="11.5" fill="#6e7787">Instructor and enrolled students.</text>
+
+    <text x="48" y="590" font-size="12.5" fill="#6e7787">One account, one role. Every page is guarded by the role at the door.</text>
+  </g>
+</svg>

@@ -1,209 +1,182 @@
 # Cognita
 
-A small live-classroom app: instructors create courses and classes, students join a class
-with a key, and everyone meets in one group voice call with a shared board.
+Cognita is a small live-classroom app for courses that meet in real time.
 
-Laravel 13 + Inertia 3 + React 19 + Tailwind 4, with LiveKit for the group call — behind a
-small provider contract, so the call server can be swapped in one class.
+An instructor builds a course and a class, a student joins with a short class key, and everyone
+meets in one group call with a shared board, live polls and an attendance register that fills
+itself. Between lessons, the community is where learners ask questions, form groups and work
+through free and paid courses at their own pace.
 
-```
-/admin                       administrators   accounts, read-only inventory
-/instructor                  instructors      courses, classes, keys, live calls
-/my-classes                  students         class key, class list, live calls
-/classes/{classroom}/call                     group call + shared board
-/system                      everyone         the system, drawn: schema, routes, protocol
-```
+Built with **Laravel 13**, **Inertia 3**, **React 19** and **Tailwind 4**. **LiveKit** carries
+voice, screen share and board strokes; **PostgreSQL** keeps the record; **Redis** keeps live room
+state; PDFs, photos and lesson files live in **private object storage**.
 
----
+<img src="docs/screenshots/call-room.png" alt="A live Cognita class: three participants on the call stage, a comments panel, and the call toolbar with board, polls, record and end class controls." width="100%">
 
-## The system, drawn
+## At a glance
 
-`/system` is a page that explains this application to itself. It is open to every
-signed-in role, and it is read-only.
+![Three role lanes — administrator, instructor and student — above two shared spaces: the community and the live room.](docs/diagrams/product-map.svg)
 
-Nothing on it is written by hand. The schema comes from the database, the route list comes
-from the router, and the counters come from the tables — so the page cannot drift away
-from the code it describes. What the machine cannot tell you — why a rule exists, what a
-frame carries, which data deliberately does not exist — is written next to the code that
-implements it.
+One account has one role: **administrator**, **instructor** or **student**. Signing up always
+creates a student; an administrator can promote an instructor. Every page is guarded by role
+middleware, so each person sees only the surface built for them. The community is the one place
+students and instructors share.
 
-| Section | What it shows |
+## Screens
+
+| Lobby | Live room |
 | --- | --- |
-| **The four surfaces** | Admin, teaching, studying and the shared room: who each one is for, what it owns and what it cannot touch. |
-| **One request** | The architecture as a diagram, then the six hops from the click to the rendered page. |
-| **The life of a class session** | `scheduled → live → ended`, the endpoints that move it and the rules the UI enforces. |
-| **Where things live** | What the class keeps, what the room keeps, and the three things that never exist anywhere. |
-| **The data** | Every table with its columns, keys, foreign keys and live row counts. |
-| **The protocol** | The frames both ends agree on, and who may send each one. |
-| **Every route** | Every route the application answers, with the middleware that guards it. |
+| <img src="docs/screenshots/call-lobby.png" alt="The call lobby: class name, instructor, the three rules of the room and a Join the call button." width="100%"> | <img src="docs/screenshots/call-room.png" alt="A live class with three participant tiles, a raised hand and a comments panel." width="100%"> |
+| **Lobby.** Who you are in the class, what the room expects, and one way in. | **Live room.** Participants, hand raising, comments and every call control. |
+| <img src="docs/screenshots/call-board.png" alt="The shared board with a momentum diagram, board tools and the draw permission toggle." width="100%"> | <img src="docs/screenshots/call-polls.png" alt="A live multiple-choice poll with two responses split 50/50 and the countdown." width="100%"> |
+| **Shared board.** Canvas or PDF, handed to students from inside the room. | **Live polls.** Timed multiple-choice or open answers, counted live. |
+| <img src="docs/screenshots/call-people.png" alt="The participants panel: a raised hand waiting, drawing access checkboxes and the board state." width="100%"> | <img src="docs/screenshots/call-lobby-student.png" alt="The student lobby: joining muted, raising a hand explained, and one way in." width="100%"> |
+| **Participants.** Hands, microphones, drawing access and removal in one panel. | **Student lobby.** The same room, with the student's own rules. |
 
----
-
-## What the app does
-
-**Three roles, nothing else.** `student`, `instructor`, `admin` — one column on `users`, and
-every surface is gated by `role:` middleware. Sign-up always creates a student; an
-administrator promotes instructors.
-
-**Courses are small on purpose.** A course is a title, an optional description, and the
-instructor who owns it.
-
-**Classes own the live call.** A class belongs to a course (or to nothing), carries a
-six-character join key, and creates its board automatically. A student types the key, becomes a
-member, and the class opens straight into the call.
-
-**Attendance, without a register.** The instructor opens one class session and ends it
-deliberately with **End class**. A student's attendance starts when they join that session,
-is refreshed while their browser is in the call, and closes when they leave. Leaving and
-rejoining the same session adds to the same time total instead of starting a new row. The
-instructor reads it at **Teaching → any class → Attendance** — one row per enrolled student
-for a given day, with first joined, last seen, sessions, time in class, and Excel/PDF
-downloads.
-
-**One group call per class.** LiveKit room names derive from the class id. Tokens are
-microphone-scoped, short-lived, and minted per request. One account gets one live seat per class:
-a second browser or device is refused while the first seat is active, and the seat is released on
-leave or after a short stale grace period.
-
-**Polls run inside the live room.** The instructor can open a timed multiple-choice or open-answer
-poll from the call bar. Students answer in the room, change their answer until the timer runs out,
-and the instructor watches the counts live. A poll belongs to one call session, so ending the
-lesson closes its polls too.
-
-**Recording never leaves the room.** The instructor can press **Record** in the call bar. The
-browser mixes the microphones and any shared screen into a file on that device and downloads it
-when the lesson is stopped; there is no egress, no upload, and no recording table. A recording is
-a local copy, not a class asset.
-
-**One shared board per class.** Inside the call the instructor presents a PDF or a blank canvas,
-draws on it, and can hand the pen to students. Strokes travel over LiveKit's data channel and are
-never stored anywhere: a room is a time and a token, and when it closes the ink is gone. What the
-class keeps is the board's *settings* — which deck, which page. Who may draw is not kept at all:
-that is a decision about one lesson, so it lives in the cache and dies with the class.
-
-**Every file lives in object storage.** Class PDFs and question photos are written to the media
-disk — S3 in production, MinIO in development — and each row remembers the disk it came from.
-Nothing is written under `public/`, and every file is served through an access-checked route
-rather than a public URL.
-
-**The pen belongs to the room.** Who may draw is not a fact about a student; it is a decision about
-one lesson. It lives in the shared cache (Redis), can only be changed from inside the live call,
-and is thrown away when the class ends. The class page has no switch for it, so the next lesson
-cannot inherit it.
-
-**Questions belong to groups, or to everyone.** The community is the learning platform: a feed
-of posts, a course library and learner-made groups. A post with a group is a question for that
-group; a post without one is a general community post visible to everyone signed in. Anyone can
-start or join a group, but only members can post in it. Answers, votes, photos and accepted answers
-work the same way in both. Classes no longer have their own question areas — they stay in the
-dashboard for calls, attendance and materials.
-
-**What was removed.** The previous build carried a forum, quizzes, gamification, knowledge
-tracing (and its Python service), moderation/reports, audit logs, staff invitations,
-impersonation, system settings, AI course generation, and a public JSON API. Payout accounts,
-earnings ledgers and payout review were removed too: instructors keep their own payment details
-outside the app and simply confirm the payments students report. None of that is in scope now;
-the whole schema is a handful of tables.
-
-**Two main platforms: Community and Dashboard.** Community is the social learning surface — a
-feed, free and paid courses with their materials and progress, and groups. Dashboard keeps classes,
-live calls, attendance and a cross-course view of tasks and progress. The admin console stays a
-separate role console and the live call is deliberately bare. The topbar avatar opens one account
-menu on every surface: profile, dashboard, community links, appearance and sign out; `/profile`
-shows the account and its totals.
-
-**Course content is earned, not merely listed.** Anyone signed in can browse a published course's
-title, description and price. Lessons, notes, videos, documents and progress need a class
-membership — and, for a paid course, a payment the instructor has confirmed. Unpaid members see the
-price and payment instructions instead of the outline. The same paid-access rule covers class PDFs
-and the live room, so paying once unlocks the whole course. Classes do not require a course: an
-instructor can create a class with no course and schedule a session with its own title, details and
-times.
-
-**Files belong to lessons.** A lesson carries its own notes, PDFs, images and uploaded videos; the
-course page only holds the outline. Video and document files are served through an access-checked
-endpoint with byte ranges, ETags and pre-signed URLs on object storage, so seeking a lesson video
-does not download the whole file through PHP. Uploaded videos play in a custom player with seek,
-volume, speed, picture-in-picture and fullscreen; PDFs and images open in an in-app viewer. Photos
-on community posts are shown as thumbnails in the feed and open in a lightbox. The course library
-opens with a horizontally scrollable row of the courses you teach or study, each with progress and
-a quick way back in. Explore below lists only courses you have not joined or created.
-
----
-
-
-## Schema
-
-| Table | Purpose |
+| Teaching | Learning |
 | --- | --- |
-| `users` | name, email, password, role |
-| `sessions` | session driver |
-| `courses` | title, description, `instructor_id` |
-| `classrooms` | name, `join_code`, `instructor_id`, nullable `course_id` |
-| `enrollments` | which student joined which class (unique pair) |
-| `class_boards` | one per class: surface, page, active document |
-| `class_documents` | PDFs attached to a class, kept for reuse across calls |
-| `call_sessions` | one per class session: title, planned start and end, status (`scheduled`, `live`, `ended`), token, who opened it, last heartbeat, when they ended it |
-| `attendance_records` | one per student per class session: joins, last seen, accumulated time |
-| `groups` | a learner-made group: name, description, creator |
-| `group_members` | which learner joined which group (unique pair) |
-| `questions` | one community post: author, optional group, title, body, tags |
-| `answers` | one answer per row: question, author, body, accepted flag |
-| `post_media` | up to five photos per question or answer, streamed through an access check |
-| `question_votes` | one vote per person per question: `-1`, `0` or `1` |
-| `answer_votes` | one vote per person per answer: `-1`, `0` or `1` |
-| `polls` | one live poll: class, call session, author, kind, question, timer, close time |
-| `poll_options` | the choices of a multiple-choice poll, in display order |
-| `poll_responses` | one response per student per poll: option or open-answer text |
-| `call_seats` | one live call seat per account per class, keyed to the browser session |
+| <img src="docs/screenshots/instructor-dashboard.png" alt="The teaching overview: open rooms, students enrolled, rooms held, tasks and course progress." width="100%"> | <img src="docs/screenshots/student-dashboard.png" alt="The student overview: live rooms, tasks, course progress and the class key box." width="100%"> |
+| **Teaching overview.** Open rooms, the roster and progress for every course you teach. | **Student overview.** Live rooms, tasks and progress, plus the class-key box. |
+| <img src="docs/screenshots/instructor-class.png" alt="The class page: a session scheduler, the class key, attendance and class settings." width="100%"> | <img src="docs/screenshots/attendance.png" alt="The daily register: present and absent counts, first joined, last seen and time in class." width="100%"> |
+| **Class page.** Announce a session, rotate the key, open the room, read the register. | **Attendance.** Present, absent, first joined, last seen and time in class. |
 
-There is no table, column or blob anywhere that holds a drawing. That is a design decision, not
-an omission: ink belongs to the room, and a room is a period of time. For the same reason there
-is no column for *who may draw* either — that is a decision about one lesson, so it is kept in
-the cache and thrown away when the class ends.
+| Community | Courses |
+| --- | --- |
+| <img src="docs/screenshots/community-feed.png" alt="The community feed: posts, answers, tags, search and group shortcuts." width="100%"> | <img src="docs/screenshots/community-post.png" alt="A community question with answers, votes, an accepted answer and related posts." width="100%"> |
+| **Feed.** Questions, tags, votes, accepted answers and group shortcuts. | **Answers.** One question with its answers, votes and related posts. |
+| <img src="docs/screenshots/groups.png" alt="The groups directory with the Physics revision group." width="100%"> | <img src="docs/screenshots/courses.png" alt="The course library: your courses first, progress, and the explore catalogue." width="100%"> |
+| **Groups.** Cohort and topic groups; members post, everyone reads. | **Courses.** Your courses first, then the free and paid catalogue. |
 
-The whole schema above is written by **one** migration,
-`database/migrations/0001_01_01_000000_create_cognita_schema.php`. Cognita is a new system
-rather than an update of an older one: there are no update migrations, no data being moved
-between shapes and no code that patches rows after the fact. Every install starts from an empty
-database and builds the same tables from the same definitions, so `php artisan migrate` (or
-`migrate:fresh --seed` for the demo data) is always the whole story.
+## What you can do
 
-Domain models live in `app/Models`. Questions add `Question`, `Answer`, `QuestionVote` and
-`AnswerVote`; live polls add `Poll`, `PollOption` and `PollResponse` alongside the call, board and
-attendance models.
+### Teach
 
----
+- **Build a course.** Add sections and lessons (article, video or quiz), publish or keep the
+  course in draft, and attach files to individual lessons. A course can be free, or paid with a
+  price and payment instructions.
+- **Run classes.** Create a class under a course — or with no course at all. Each class gets a
+  six-character join key you can rotate at any time. The roster, join dates and payment state sit
+  on one page.
+- **Open the room.** Announce a session with a title, start time and window, join to open it, and
+  press **End class** when it is over.
+- **See who attended.** One row per student per session, with first joined, last seen, session
+  count and time in class. Download the day's register as Excel or PDF.
+- **Confirm payments.** In a paid course, a student reports that they have paid; you confirm it
+  from the roster. Only your confirmation unlocks the live room and the course content.
 
-## Running it locally
+### Learn
 
-Requirements: PHP 8.3+, Node 20+, Docker (for Postgres), and `openssl` for the local
-certificate.
+- **Join with a key.** Type the class key on the welcome page or under **My classes** — before or
+  after signing in.
+- **Work through a course.** Open lessons, watch uploaded videos or embeds, read notes, view PDFs
+  and images, and mark lessons in progress or complete.
+- **Know what is open.** Titles, descriptions and prices are visible to every signed-in learner.
+  Lessons and files need a class membership; a paid course also needs the instructor's
+  confirmation.
+- **Keep your own record.** Your classes, recent sessions, attendance history and every file
+  shared with your classes are collected in the dashboard.
+
+### Learn together
+
+- **A community feed.** Ask a question or start a discussion, to everyone or inside a group. Add
+  tags, attach up to five photos, answer, vote both ways, and mark one answer as accepted.
+- **Groups.** Any learner can start a group; anyone can join. Only members can post inside.
+- **Courses in one library.** Your courses come first, the rest are there to explore, with
+  free/paid filters and progress on everything you have joined.
+- **Find the post.** Search across posts and answers (semantic when embeddings are configured,
+  keyword otherwise), sort by newest, top voted or unanswered, and scope the feed to your groups.
+
+### Meet in the room
+
+- **One voice room per class.** The instructor opens it; students join muted and raise a hand to
+  ask for the microphone. Screen sharing, short-lived comments and participant removal are built
+  in. One account gets one live seat per class.
+- **A shared board.** Present a PDF from the class library or a blank canvas. Pen, highlighter,
+  laser, spotlight, eraser, line, arrow, rectangle, ellipse and text; personal undo/redo; pages;
+  fullscreen. The instructor can hand the pen to individual students for that lesson only.
+- **Polls that belong to the lesson.** Start a timed multiple-choice or open-answer poll from the
+  call bar. Answers can change until the timer ends; counts and written answers update live.
+- **Recording on your device.** The instructor can record the room — microphones plus the stage —
+  to a local file. Nothing is uploaded.
+- **Attendance that writes itself.** Joining starts a row, heartbeats keep it fresh, leaving
+  closes it, and rejoining the same session adds to the same total instead of starting over.
+
+## The life of a session
+
+![A class session moves from scheduled to live to ended; only the instructor moves it forward.](docs/diagrams/session-lifecycle.svg)
+
+| State | What it means | Who may enter |
+| --- | --- | --- |
+| **Scheduled** | The instructor announced a title, a start time and a window. | Students wait in the lobby; nothing is live or recorded. |
+| **Live** | The instructor opened the room. Attendance, ink and the board belong to this session. | The instructor and enrolled students. |
+| **Ended** | The instructor pressed **End class**, or the window passed unused. | Nobody. A finished session stays as history and cannot be rejoined. |
+
+A network drop, a closed laptop or a rejoin lands in the same room, the same board and the same
+attendance row. Only **End class** closes a session.
+
+## What is kept, and what deliberately is not
+
+| Kept | Only while the room is open |
+| --- | --- |
+| Accounts, courses, sections, lessons, classes and memberships | Drawings — the board is a period of time, never a row in the database |
+| Sessions, attendance totals and class PDFs | Chat comments — they travel over the call's data channel and vanish with it |
+| Posts, answers, votes, groups and poll results | Microphone and drawing permissions — granted for this lesson, never saved |
+| Payment state and paid-at timestamps | Recordings — written to the instructor's device, never uploaded |
+
+Files are just as private: every PDF, photo and lesson file lives on the media disk (S3 in
+production, MinIO or local disk in development) and is served through an access-checked route.
+Nothing is written under `public/` and no file gets a public URL.
+
+## How it runs
+
+![The browser and Laravel exchange Inertia pages; LiveKit carries live media; PostgreSQL, Redis and object storage hold state.](docs/diagrams/architecture.svg)
+
+Laravel renders each page with Inertia, so the browser stays a single React app without a
+separate API to maintain. For the call, Laravel mints a short-lived token and then gets out of
+the way: voice, screen share and board strokes travel directly between browsers through LiveKit.
+
+## Add a little class
+
+1. Sign in as the instructor and create a course, then a class inside it — or create a class with
+   no course at all.
+2. Copy the six-character class key from the class page.
+3. Sign in as a student in another browser and enter the key.
+4. Join the call, open the board, upload a PDF or draw on the canvas, and hand the pen to a
+   student from **Participants**.
+5. Open a poll, ask a question in **Comments**, or press **Record** to keep a copy.
+6. Press **End class** when the lesson is done, then read the register from the class page.
+
+Handy shortcuts inside the call: `B` board, `F` fullscreen, `M` microphone, `H` hand, `P` polls,
+`R` record (instructor), `Esc` leave fullscreen or close a panel.
+
+## Run it locally
+
+Requirements: **PHP 8.3+**, **Node 20+**, **Docker** (PostgreSQL, MinIO, Redis), and `openssl`
+for the local HTTPS certificate.
 
 ```bash
-# 1. database, object storage (MinIO) and the shared cache (Redis)
+# 1) from the repository root: database, object storage and shared cache
 docker compose up -d db minio minio-mc redis
 
-# 2. backend
+# 2) backend
 cd cognita
-cp .env.example .env           # then set DB_*; leave the LIVEKIT_* block as it is
+cp .env.example .env          # the defaults already match docker compose
+composer install
 php artisan key:generate
 php artisan migrate:fresh --seed
 php artisan serve --host=0.0.0.0 --port=8000
 
-# 3. frontend (second terminal)
-cd cognita
+# 3) frontend, second terminal
 npm install
-npm run dev                    # or `npm run build` for production assets
+npm run dev                   # or: npm run build
 
-# 4. the call server (third terminal) - no configuration needed
+# 4) call server, third terminal (from the repository root)
 .dev/livekit.sh
 ```
 
-Open <http://127.0.0.1:8000>; from a phone on the same Wi-Fi, open
-`https://<this-machine-lan-ip>:8443` so the microphone is allowed. See
-[Running LiveKit for calls](#running-livekit-for-calls) for what the script does and why the
-HTTPS port exists.
+Open <http://127.0.0.1:8000>. From a phone on the same Wi-Fi, open
+`https://<this-machine-lan-ip>:8443` instead, so the browser allows the microphone. See
+[the call server](#the-call-server) for what that script does.
 
 ### Seeded accounts
 
@@ -215,20 +188,14 @@ HTTPS port exists.
 | Student | `student2@cognita.test` | `password` |
 | Student | `student3@cognita.test` | `password` |
 
-The seed also creates one class (*Physics Cohort A*, key **`PHY101`**) and a varied course
-catalogue: six published courses — three free and three paid — with ten sections and twenty-one
-lessons across them. Your own courses (the ones you teach or are enrolled in) appear first in a
-horizontal **Your courses** row at the top of the library; the rest sit under **Explore courses**.
+The seed also creates the *Physics Cohort A* class (key **`PHY101`**), a mixed catalogue of free
+and paid courses with sections and lessons, and a Physics revision group with community posts.
 
----
+## The call server
 
-## Running LiveKit for calls
-
-Two connections must both work: the **signal** WebSocket on 7880 (TCP) and the **media**
-path on 7882 (UDP), with TURN on 3478 as the fallback. A page that shows *Joining…* and
-then *Reconnecting* is almost always the second one.
-
-### One command, no configuration
+Two connections must both work: the **signal** WebSocket on 7880 (TCP) and the **media** path on
+7882 (UDP), with TURN on 3478 as the fallback. A page that says *Joining…* and then *Reconnecting*
+is almost always the second one.
 
 ```bash
 .dev/livekit.sh              # start everything, machine + LAN
@@ -240,429 +207,89 @@ then *Reconnecting* is almost always the second one.
 .dev/livekit.sh --no-tls     # skip the HTTPS front
 ```
 
-Every start re-detects the machine's current LAN address and rewrites everything that
-depends on it, so nothing has to be edited by hand:
+Every start re-detects the machine's current LAN address and rewrites everything that depends on
+it, so nothing has to be edited by hand. The app itself never stores the call address: the
+provider derives it from the request, so a laptop at `localhost`, a phone at a LAN address and a
+hosted server all get an address they can reach.
 
-- `LIVEKIT_URL_MODE=auto` (plus ports) in `cognita/.env`
-- `node_ip` in `.dev/livekit/livekit.yaml` — the address LiveKit advertises to browsers
-- the self-signed certificate for the HTTPS front, regenerated when the address changes
-- `APP_URL`
+| Where | Address | Microphone |
+| --- | --- | --- |
+| This machine | `http://localhost:8000` | yes |
+| This machine, phone-equivalent | `https://localhost:8443` | yes |
+| Phone / other device | `https://<lan-ip>:8443` | yes, after accepting the certificate |
+| Phone on plain HTTP | `http://<lan-ip>:8000` | no — hears only, the browser blocks capture |
 
-The app itself never stores the call address. `App\Services\LiveKitProvider` derives it from the
-request, so a laptop at `http://localhost:8000`, a phone at `http://192.168.1.20:8000` and a
-tunnel all get an address they can reach. `LIVEKIT_URL` is only for hosted LiveKit, together
-with `LIVEKIT_URL_MODE=fixed`.
-
-### Swapping the call server
-
-The app talks to a call server through one interface, `App\Contracts\RealtimeProvider`: a
-driver name, a signal URL, a grant (URL, token, identity, expiry), a way to remove a
-participant, and a diagnostic report. LiveKit is one implementation of it.
-
-```php
-// config/services.php
-'realtime' => [
-    'driver'  => env('REALTIME_DRIVER', 'livekit'),
-    'drivers' => ['livekit' => LiveKitProvider::class],
-],
-```
-
-To move to another backend — Jitsi, Daily, a plain WebSocket relay — write the class, register
-it under a new name, and set `REALTIME_DRIVER`. Nothing else in PHP changes: the controllers
-type-hint the interface, and the container resolves it.
-
-The browser mirrors the same idea. `resources/js/realtime/` defines a `CallTransport` (join,
-leave, microphone, the three frame kinds, media path) and a registry:
-
-```
-realtime/
-├── types.ts             CallTransport, TransportOptions, the event vocabulary
-├── protocol.ts          the frames both ends agree on (board, presence, comment)
-├── livekit-transport.ts the bundled adapter
-├── local-transport.ts   BroadcastChannel fallback: tabs on one device, no media
-└── index.ts             createCallTransport(config, options)
-```
-
-The page is handed `realtime.driver` and `realtime.configured`; it constructs the matching
-adapter and never imports a vendor SDK. If the server says the driver is not configured, the
-board still works — `LocalTransport` keeps tabs in step and the call page says so instead of
-failing at the join button.
-
-```
-# verify the provider the app resolved (alias: livekit:check)
-php artisan realtime:check
-php artisan realtime:check --json --url=https://your-host
-```
-
-`realtime:check` resolves the provider from the container and reports what the browser would
-be told, so a misconfigured driver fails here rather than at the start of a lesson.
-
-### Why a relay, and why an HTTPS front
-
-WSL2 on Windows 10 NATs the distro behind the host: `netsh interface portproxy` forwards TCP
-only, never UDP, and `networkingMode=mirrored` needs Windows 11. Docker Desktop's published
-ports do not deliver WebRTC media either — the browser joins and the server receives zero
-STUN packets. So LiveKit runs natively in WSL (the binary is extracted from
-`livekit/livekit-server:v1.13`, nothing is downloaded) and a small Node relay on Windows owns
-every port a browser dials:
-
-```
-phone / browser ──▶ <lan-ip>:7880, 7881, 8000 (TCP) ──▶ relay ──┐
-                └──▶ <lan-ip>:7882, 3478 (UDP) ───────▶ relay ──┼──▶ <wsl-ip> LiveKit + Laravel
-phone, voice    ──▶ https://<lan-ip>:8443 (TCP, TLS) ─▶ relay ──┘
-```
-
-The HTTPS front matters for telephones: a browser only hands out the microphone on a secure
-origin, and `http://192.168.x.x:8000` is not one. On that single port the relay sends `/rtc`
-and `/twirp` to LiveKit and everything else to Laravel, so the page and its `wss://` share one
-origin. It uses a self-signed certificate, accepted once per browser. The call page notices a
-plain-HTTP origin and links straight to the secure address.
-
-### One-time setup on Windows
-
-The relay binds ports the Windows firewall does not open by default, and Windows drops those
-packets even when they come from the distro. Run this once, elevated:
+On Windows, run the firewall setup once from an elevated PowerShell:
 
 ```powershell
-# elevated PowerShell
-.\\.dev\\lan-forward\\setup-windows.ps1
+.\.dev\lan-forward\setup-windows.ps1
 ```
 
-It creates the `Cognita relay TCP` and `Cognita relay UDP` rules for the Private and Domain
-profiles, removes a stale `netsh portproxy` on 8000, and writes a transcript to
-`.dev/lan-forward/setup.log`. The rules are port-based, so a changed Wi-Fi address does not
-break them.
+Verify a call without guessing: `.dev/livekit.sh check`, `php artisan realtime:check`, or the
+**Check connection** button in the call lobby, which reports configuration, signal, credentials,
+UDP media and the media path this browser actually chose.
 
-### Opening it
+The call server is replaceable. `App\Contracts\RealtimeProvider` is the whole contract — a driver
+name, a signal URL, a grant, participant removal and a diagnostic report. LiveKit is one
+implementation; to use another, write the class, register it in `config/services.php`, and set
+`REALTIME_DRIVER`. The browser mirrors the idea with a `CallTransport` in `resources/js/realtime/`
+and falls back to a tab-local preview when no server is configured.
 
-| where | address | microphone |
-| --- | --- | --- |
-| this machine | `http://localhost:8000` | yes |
-| this machine, phone-equivalent | `https://localhost:8443` | yes |
-| phone / other device | `https://<lan-ip>:8443` | yes, after accepting the certificate |
-| phone on plain HTTP | `http://<lan-ip>:8000` | no — hears only, the browser blocks capture |
+### If the call will not start
 
-A Wi-Fi hotspot can change the address while the server is running. `status` says so
-explicitly, and rerunning `.dev/livekit.sh` re-advertises the new one.
+1. **Signal fails** — LiveKit is not running. Start it with `.dev/livekit.sh`, then run
+   `.dev/livekit.sh check`.
+2. **Media fails** — UDP 3478 is being dropped. On Windows rerun `setup-windows.ps1` elevated; on
+   another network, check the router. Carrier-grade NAT on mobile data often blocks inbound UDP.
+3. **The origin is not secure** — open the HTTPS address the call page links to. The board still
+   works on plain HTTP; only capture needs a secure origin.
+4. **Two tabs on one account** — each tab gets its own call identity, so they no longer kick each
+   other out. One account still gets one live seat per class.
 
-### Verifying without a phone
+## Under the hood
 
-```bash
-.dev/livekit.sh check                      # signal, TCP fallback, UDP media, HTTPS front
-php artisan livekit:check                  # what the browser would do, from Laravel
-node .dev/lan-forward/stun-probe.mjs <lan-ip> 3478   # is UDP really arriving?
-```
-
-The call page has the same thing built in: **Check connection** in the lobby (and
-automatically after a failed join) runs `/classes/{id}/call/doctor` and lists each layer with
-the address it tried — configuration, signal, credentials, UDP media — plus the media path the
-browser actually chose (`udp`/`tcp`, direct or relayed) while in a call.
-
-For a real end-to-end run, two browsers on the Windows side join the same class:
-
-```bash
-# from Windows (Node must be the Windows build)
-node \\\\wsl.localhost\\Ubuntu-24.04\\home\\<you>\\Cognito\\.dev\\call-check.mjs \\
-     --base https://<lan-ip>:8443 --class 1 --allow-cert-error
-```
-
-It reports the selected ICE candidate pair and the audio packet counts in both directions,
-and fails if either microphone stayed silent.
-
-### Docker
-
-`docker-compose.yml` still runs `livekit/livekit-server` with the same keys. Use it when the
-server sits on a real host or behind TURN/TLS, not for media on this machine. `node_ip` in
-`docker/livekit/livekit.yaml` must be that host's LAN address.
-
-### When the call still fails
-
-1. **Open the call page and press *Check connection*.** The failing line names the layer and
-   the address, which is faster than guessing.
-2. **`signal` fails** — LiveKit is not running, or TCP 7880 does not reach it. Start it with
-   `.dev/livekit.sh`, then `.dev/livekit.sh check`.
-3. **`media` fails** — UDP 3478 is dropped. On Windows rerun `setup-windows.ps1` elevated; in
-   another network, check the router, and note that carrier-grade NAT on mobile data often
-   blocks inbound UDP entirely — use Wi-Fi, or a host with TURN.
-4. **The page says the origin is not secure** — open the HTTPS address the call page links to.
-   The board works either way; only capture needs it.
-5. **One identity per browser tab.** Each tab gets its own LiveKit participant (suffixed from
-   `sessionStorage`), so two tabs or two devices on one account no longer kick each other. When
-   the server ends a session the call page says why and offers *Rejoin*.
-## Using it
-
-1. Sign in as the instructor, create a course, then a class inside it.
-2. Copy the class key from the class page.
-3. Sign in as a student (or use a private window) and type the key on `/` or `/my-classes`.
-4. Join the call from the class card. Press **Board** to show the board, upload a PDF (or pick one
-   already attached to the class), switch to the blank canvas, and draw.
-5. **Who may draw** lives in the people panel *inside the room*: tick a student and the pen is
-   theirs for this lesson. There is no switch anywhere else, and nothing is written down — the
-   next lesson starts without it.
-6. Shortcuts while the call is open: `B` show/hide the board, `F` fullscreen, `M` microphone,
-   `H` hand, `P` live polls, `R` record (instructor), `Esc` leave fullscreen or close a panel.
-
-Drawings belong to the room, not to the class: nothing is saved to the database, so when the
-instructor ends the class or starts a fresh board, the next board starts blank. The PDFs
-attached to the class stay.
-
-## The class session, at a glance
-
-One class, one live call, and a session that has a life of its own:
-
-| State | What it means | Who may enter |
-| --- | --- | --- |
-| **scheduled** | The instructor announced it: a title, a start time and the window it runs for. | Students, into the waiting room. Nothing is live and nobody is recorded. |
-| **live** | The instructor started it. Attendance, ink and the shared board belong to this session. | The instructor and the students of the class. |
-| **ended** | The instructor pressed **End class**, or the window closed without it ever opening. | Nobody. A finished session cannot be rejoined. |
-
-The rules the UI enforces:
-
-- **Only the instructor announces or starts a session.** A student cannot open one, and the
-  call-token endpoint refuses a student while no session is live.
-- **A student enters a session that exists.** With a session announced they land in the waiting
-  room, the page watches the room, and the moment the instructor starts it they are offered the
-  call. With nothing announced there is nothing to join.
-- **A session that has passed cannot be rejoined.** It stays on the class page as history, with
-  its time and its title, and no way back in.
-- **A dropped network, a closed laptop or a rejoin never ends a session.** Only **End class**
-  closes it, so a rejoin lands in the same room, the same board and the same attendance row.
-
-### Screens
-
-| Lobby | Live room |
+| Layer | Choices |
 | --- | --- |
-| ![The call lobby, with the class name, call driver and Join the call button](docs/screenshots/call-lobby.png) | ![A live call with three participants, a raised hand and class comments](docs/screenshots/call-room.png) |
-| **Shared board** | **Live polls** |
-| ![The shared board with a momentum diagram, the participant strip and comments](docs/screenshots/call-board.png) | ![A live poll with two student responses and the countdown](docs/screenshots/call-polls.png) |
-
-| Feature | What happens |
-| --- | --- |
-| **Lobby** | Everyone lands here first: class, role and call driver. An insecure origin warns that the microphone will be blocked; a failed join offers a connection check for this browser's address. With no call server configured, the page says it is running in local preview. |
-| **Joining** | The instructor opens the room by joining. A student who arrives first waits for that moment. One account gets one seat per class: a second browser is refused until the first leaves or its seat goes stale (45 seconds by default). |
-| **Microphones** | The host joins with the mic on; students join muted and listen. A student raises a hand, the header counts it, and the instructor opens or takes back their microphone in **Participants**. That permission lasts for this call only and is never saved. |
-| **Screen share** | Anyone allowed to talk can share their screen. One shared screen takes the main stage; if the board is open, the notice offers to hide it and watch instead. |
-| **Comments** | A short-lived class chat sent over the call's data channel. Messages belong to the room and disappear with it; nothing is stored. |
-| **Participants** | The panel lists everyone with role, raised hand, microphone state and the media path this browser chose. The instructor can remove a participant from the call. |
-| **Board** | Show or hide the shared board without leaving the call, hand the pen to selected students, and rotate to a fresh room with the sparkle when the lesson needs a clean page. See [The board](#the-board). |
-| **Polls** | Timed multiple-choice or open-answer polls belong to the open session and close with it. See [Live polls](#live-polls). |
-| **Recording** | The instructor can record the room to this device; nothing is uploaded. See [Recording, on your device](#recording-on-your-device). |
-| **Attendance** | Joining starts the student's row; heartbeats keep it fresh, leaving closes it, and rejoining the same session adds to the same total. See [Attendance](#attendance). |
-| **Resilience** | The header shows **Live** or **Reconnecting**. Reconnection never opens a new session, and the **End class** button is the only thing that closes the room, its polls and its attendance for everyone. |
-| **Sound and focus** | Synthesised cues cover joins, raised hands, pen handovers and a closing room, with a mute toggle in the header. Board fullscreen keeps the call bar and panels inside the display; all motion respects `prefers-reduced-motion`. |
-
-Keyboard shortcuts while the call is open: `B` board, `F` fullscreen, `M` microphone, `H` hand,
-`P` polls, `R` record (instructor), `Esc` leave fullscreen or close a panel.
-
-## The board
-
-- **Canvas** — one blank page with a soft dot grid.
-- **PDF** — upload up to 25 MB. Every upload stays attached to the class, so instructors can put
-  a previous deck back on the board without uploading it again. Pages are rendered client-side
-  with PDF.js from an authorised streaming route that supports range requests, ETag
-  revalidation and long-lived private caching, so students on constrained connections download
-  only the chunks they need.
-- Strokes are normalised to the page (0–1) and the sheet keeps a fixed shape, so every window
-  size shows the same drawing — the canvas is 16:10 and a PDF keeps its own ratio.
-- **The sheet fills the stage.** It is measured from the live container (a `ResizeObserver`) with
-  a hairline margin, so a phone gets the pixels its screen has and a projector gets all of them;
-  on a small screen the board area keeps a 52vh floor and the page scrolls to it. **Fullscreen**
-  (the arrows in the toolbar, or `F`) hands it the whole display, drops the participant strip and
-  keeps the board toolbar plus the full call bar — mute, share, hand, board, record, polls, comments,
-  people, end class and leave. Polls, comments and the people panel open beside the sheet inside
-  fullscreen instead of below the call. **Hide** folds both the call bar and the board toolbar away
-  to a small **Show controls** button, so the sheet can be completely clean without losing the way
-  back. Native `requestFullscreen` where
-  the browser has it, a fixed overlay on iOS Safari, same button either way.
-- **Ink is memory, not data.** A class session opens when the instructor joins and stays open
-  until they press **End class** (or start a fresh board). A lost network, a closed laptop or a
-  rejoin never creates a new session. The server stores the session token and nothing else, so
-  the board endpoint refuses strokes outright (`422`), and there is no column for them to land
-  in.
-- **A late joiner asks for the board.** Since there is nothing to read it from, the browser
-  broadcasts an `ask` frame; the host answers with the room as it stands in their own canvas. The
-  host is the authority: their canvas *is* the room's ink.
-- The room's token is what resets everybody: a new token (a fresh room, or the host pressing the
-  sparkle) is what tells each browser to blank its own canvas at the same moment.
-- **Mouse-first drawing.** Pointer samples are coalesced and joined with quadratic curves, so a
-  mouse or trackpad produces a continuous line instead of visible corners. Hovering shows a brush
-  preview that matches the current pen or eraser size; shapes use a crosshair and text uses the
-  normal caret.
-- **Erasers sized for a real board.** The eraser has its own three sizes — roughly 40, 80 and
-  140 px on a 1000 px sheet — and erases with a large circular preview. `E` toggles the eraser
-  from anywhere on the board; pressing it again returns to the pen.
-- **Laser and spotlight.** `L` turns the pointer into a short-lived glowing laser trail; `S`
-  dims the sheet around the pointer so the class looks where the instructor is looking. Neither
-  writes ink, so neither needs undoing.
-- **Undo and redo.** Undo is personal (you can remove your own last stroke; the instructor can
-  remove any), and redo puts it straight back.
-- **The canvas and the PDF keep separate state.** Each sheet has its own ink, and the page you
-  were on comes back when you return to it — switching surfaces no longer starts the deck over,
-  and it no longer resets the zoom.
-- Tools: pen, highlighter, laser, spotlight, eraser, line, arrow, rectangle, ellipse, text,
-  five inks, three pen widths, page navigation and clear page.
-- The instructor owns the surface, the page, the document, and the draw permission; students
-  own only their strokes, and only while the pen is handed over.
-- **The pen is handed over in the room.** The permission is kept in the shared cache, keyed by
-  class, and only the live call can change it. Ending the class gives the pen back.
-- Undo is personal: you can only remove a stroke you drew (the instructor can remove any).
-- Feedback is deliberately quiet: synthesised WebAudio cues for joins, hands, pen handovers and
-  a closing room (mute with the speaker button), toasts for anything that happened once, and a
-  notice strip for things that are true right now. All motion collapses under
-  `prefers-reduced-motion`.
-
-## Live polls
-
-Inside a live class, the **Polls** button in the call bar opens the poll panel. The instructor can
-start a poll without leaving the room:
-
-- **Two kinds.** A multiple-choice poll takes two to six options; an open-answer poll takes a short
-  written reply. The instructor picks a 30 s, 1 min, 90 s or 2 min timer when starting it.
-- **Only during class.** A poll belongs to the open call session. Starting a new poll closes the
-  previous one; ending the class closes all of them. There is no poll page outside the room.
-- **One response per student.** Students choose an option or write an answer, and can change it
-  until the timer expires. The host cannot vote in their own poll.
-- **Results are live and anonymous.** Everyone sees the counts for each option and the anonymous
-  open-answer texts as they arrive, not only the instructor. Opening an earlier poll in the panel
-  expands its recorded results too. Direct poll URLs are still checked against class membership.
-
-The poll list is refreshed while the call is open, so a new poll reaches every browser in the room
-within a few seconds and the countdown is shared.
-
-## Recording, on your device
-
-The **Record** button in the call bar is the instructor's. It captures what the room is carrying,
-not what the server stores:
-
-- The browser mixes this microphone, subscribed student voices and any screen-share audio through
-  the Web Audio API, and paints whichever screen is on the stage into a 720p canvas. When the
-  browser cannot encode video, the recording falls back to audio-only (`webm`/`m4a`).
-- Pressing **Stop** downloads the file — `cognita-<class>-<date>-<time>.webm` (or `.mp4`) — and a
-  toast names it and its size. Nothing is uploaded, and the backend has no concept of recordings.
-- **Leaving**, **End class** and a lost connection stop and save the recording automatically.
-  Closing the tab before stopping loses it, so the page warns before a hard unload.
-- While recording, a pulsing **REC** chip shows the elapsed time in the call header and the
-  controls show **Stop**. The feature is hidden for students and in the no-server preview.
-
-## Attendance
-
-There is nothing to mark by hand and nothing to save from the register screen: it only reads.
-
-- The instructor's session is the unit of attendance. A student who joins while it is open
-  gets one row for that session; leaving and rejoining reuses the row and adds time instead of
-  creating another. The instructor's **End class** button closes every open row and disconnects
-  the call. The host has no record — attendance is about students.
-- **Where to find it:** the *Attendance* button on any class card on `/instructor`, the
-  *Attendance* button in the class header, the *Full register* link on the class page's
-  summary card, or the calendar button in the call header (it opens a new tab so the call
-  keeps running). Only the instructor who owns the class can open it.
-- One row per enrolled student: **Present** once they have been in the call that day, with
-  first joined, last seen, number of sessions and total time in class.
-- The date picker reads any day (`?date=YYYY-MM-DD`); a malformed date falls back to today.
-- **Excel** and **PDF** download the same day's register — the two files an office asks for.
-
-## Community: a social learning platform
-
-Community is one of the app's two main platforms. It is a feed, a course library and learner-made
-groups, with its own chrome and navigation. Classes no longer own question areas.
-
-- **Browse and learn.** Every signed-in learner can see any published course in the library,
-  including one taught by another instructor — there is no owner-only block on browsing. The
-  library pins the courses you teach or are enrolled in at the top in a horizontal scrollable row
-  under **Your courses**. **Explore courses** below excludes those courses and offers free/paid
-  filters. Draft courses stay hidden. Instructors create, edit and delete courses from **Teaching →
-  My courses** in the dashboard. Joining a class with a key enrols you in its course; the lessons, notes, videos, files
-  and progress then open. For a paid course the instructor must also confirm the payment. The
-  dashboard shows tasks and progress once you have access.
-- **Groups anyone can start.** Any learner can create a public group and becomes its first member.
-  Anyone may join and read; only members post questions into it. The creator manages the group.
-- **Post to everyone or to a group.** A general post is visible to every signed-in learner. Pick a
-  group in the composer to ask that group instead. Up to five comma-separated tags are lowercased,
-  deduplicated and stripped of `#`.
-- **Photos.** Posts and answers carry up to five JPG, PNG, GIF or WebP images (10 MB each), stored
-  on the private media disk and served through an access-checked route.
-- **Answer once, accept once.** Only the person who posted can mark an answer as accepted; accepting
-  another moves the mark, and clicking it again clears it.
-- **Vote both ways.** One vote per person per post or answer; clicking the same direction clears it,
-  voting the other way switches it. You cannot vote on your own post.
-- **Find the post.** Sort by newest, top voted or unanswered; search titles, bodies and answers;
-  filter the feed to general posts, your groups or one group. Solved posts show a green badge.
-
-The demo seeder creates a Physics revision group with four questions and two general community
-posts, including a solved derivation and an unanswered units question.
-
-## Design
-
-The interface borrows Google Meet's grammar rather than a marketing page: a light blue-grey
-product surface with a single accent blue for action, pill-shaped controls, and a dark stage
-reserved for the call itself. Inside the call that means a full stage, a compact top bar with
-the meeting identity and key, a floating control bar (mic, present, hand over pen, people,
-leave), and a side panel with the participant list.
-
-Tokens live in `resources/css/app.css`:
-
-| Token | Value | Use |
-| --- | --- | --- |
-| `--color-canvas` | `#f4f6fb` | app background |
-| `--color-brand` | `#0b57d0` | primary action (Google blue) |
-| `--color-live` | `#1a7f3c` | live affordances |
-| `--color-danger` | `#b3261e` | leave call, destructive |
-| `--color-stage` | `#121417` | call stage |
-
-Radii: containers 16px, tiles 14px, inputs 12px, buttons full pill. Typeface: Instrument Sans.
-
----
-
-## Project layout
+| Backend | Laravel 13 · PHP 8.3+ · one migration for the whole schema · policies for every model |
+| Frontend | React 19 · Inertia 3 · Tailwind 4 · Geist · TypeScript |
+| Calls | LiveKit (swappable provider) · one seat per account · `LocalTransport` fallback for preview |
+| Data | PostgreSQL · Redis for live room state · S3-compatible object storage for files |
+| Quality | PHPUnit feature and unit tests · `tsc --noEmit` · Pint |
 
 ```
 cognita/
 ├── app/
-│   ├── Console/          artisan commands
-│   ├── Contracts/        RealtimeProvider (what a call server must do)
-│   ├── Enums/            UserRole, BoardSurface, CourseStatus, LessonStatus, ...
-│   ├── Exports/          the attendance workbook
-│   ├── Http/
-│   │   ├── Controllers/  auth, dashboard, join, live call, board, Q&A, polls;
-│   │   │                 Instructor/, Student/ and Admin/ subfolders
-│   │   ├── Middleware/   EnsureUserHasRole, HandleInertiaRequests
-│   │   └── Requests/     one form request per action
+│   ├── Contracts/        RealtimeProvider — what a call server must do
+│   ├── Enums/            roles, statuses, lesson types, payment states
+│   ├── Http/             controllers, form requests and policy wiring
 │   ├── Models/           one model per table
 │   ├── Policies/         one policy per model
-│   ├── Providers/        AppServiceProvider
-│   ├── Services/         ClassroomAccess, BoardSessions, CoursePayments,
-│   │                     AttendanceTracker, CallSeats, DrawPermissions, ...
-│   └── Support/          HumanTime (the words), MediaDisk (where files live)
+│   ├── Services/         calls, board, attendance, payments, permissions
+│   └── Support/          small shared helpers
 ├── database/
-│   ├── migrations/       one file: the whole schema, written once
+│   ├── migrations/       one file: the whole schema
 │   ├── factories/        one per model
-│   └── seeders/          accounts, one teaching example, a group and community posts
+│   └── seeders/          demo accounts, a class, courses and community posts
 ├── resources/js/
-│   ├── components/       ui primitives, admin, community, questions, board and call pieces
-│   ├── hooks/            useCall (connection), useBoard (ink), usePresence,
-│   │                      useAttendance, usePolls, useFullscreen
-│   ├── layouts/          chrome.tsx (the shared pieces), shell.tsx (which shell a
-│   │                      page wears), AppShell, DashboardShell, CommunityShell,
-│   │                      GuestShell
-│   ├── lib/              http, api, board, sound, routes, utils
-│   ├── realtime/         transport contract + livekit / local adapters
-│   └── pages/            Welcome, Auth, Community, Student, Instructor, Admin, LiveCall, System
-├── resources/css/app.css design tokens, component classes, motion
-├── config/services.php   third-party services: LiveKit + the realtime driver registry
-├── config/calls.php      live seat policy and stale grace period
-└── routes/               web.php, admin / instructor / student groups, questions + community
+│   ├── components/       UI, call, board, community and dashboard pieces
+│   ├── hooks/            useCall, useBoard, usePolls, usePresence, useFullscreen
+│   ├── layouts/          AppShell, DashboardShell, CommunityShell, GuestShell
+│   ├── pages/            Welcome, Auth, Student, Instructor, Admin, Community, LiveCall, Profile
+│   └── realtime/         transport contract plus LiveKit and local adapters
+├── routes/               one file per surface
+└── tests/                Unit + Feature
 ```
 
 ## Tests
 
 ```bash
-.dev/acceptance.sh                        # schema, phpunit, tsc, vite build
-.dev/ui-smoke.sh http://127.0.0.1:8000    # HTTP smoke test of all three roles
+php artisan test --compact                # from cognita/
+npm run typecheck                         # from cognita/
+.dev/acceptance.sh                        # schema, phpunit, tsc, production build
+.dev/ui-smoke.sh http://127.0.0.1:8000    # HTTP smoke test across the three roles
 ```
 
-The suite covers authentication, role boundaries, the class-key door (including the deferred
-key for guests), instructor course/class management and scoping, board permissions and stroke
-normalisation, PDF upload and streaming, call tokens and one-seat-per-account locking, the admin
-console, live poll timing and membership, community groups and post isolation, voting and
-accepted answers, the `/system` map, and media storage: that every uploaded file
-lands on the media disk and is served back through the access check.
+The suite covers authentication and role boundaries, the class-key door, course and class
+management, paid-access gating, curriculum and files, the board and call permissions, one-seat
+call locking, polls, attendance, community groups, post isolation, voting, accepted answers,
+search and media storage.

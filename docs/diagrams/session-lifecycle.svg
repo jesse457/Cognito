@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 460" role="img" aria-labelledby="sessionTitle sessionDesc">
+  <title id="sessionTitle">The life of a class session</title>
+  <desc id="sessionDesc">A session is announced, opened by the instructor, and closed. Rejoining after a dropped connection never ends it.</desc>
+
+  <rect width="1200" height="460" fill="#f1f3f7"/>
+
+  <defs>
+    <marker id="sessionArrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#6e7787"/>
+    </marker>
+  </defs>
+
+  <g font-family="ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif">
+    <text x="48" y="58" font-size="28" font-weight="700" fill="#0b0d12">The life of a class session</text>
+    <text x="48" y="86" font-size="15" fill="#4c5563">Only the instructor moves it forward. A dropped connection never ends it.</text>
+
+    <!-- Scheduled -->
+    <rect x="48" y="118" width="320" height="236" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="72" y="138" width="98" height="26" rx="13" fill="#e8edfd"/>
+    <circle cx="88" cy="151" r="4" fill="#1f4ae0"/>
+    <text x="100" y="156" font-size="12.5" font-weight="600" fill="#173ab4">scheduled</text>
+    <text x="72" y="196" font-size="18" font-weight="600" fill="#0b0d12">Announced</text>
+    <text x="72" y="224" font-size="13" fill="#4c5563">The instructor sets a title, a start</text>
+    <text x="72" y="244" font-size="13" fill="#4c5563">time and a window.</text>
+    <text x="72" y="264" font-size="13" fill="#4c5563">Students wait in the lobby.</text>
+    <line x1="72" y1="286" x2="344" y2="286" stroke="#eef0f4"/>
+    <text x="72" y="310" font-size="12" fill="#6e7787">Nothing is live; nobody is recorded.</text>
+
+    <!-- Live -->
+    <rect x="440" y="118" width="320" height="236" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="464" y="138" width="66" height="26" rx="13" fill="#dff4ea"/>
+    <circle cx="472" cy="151" r="4" fill="#0d8a52"/>
+    <text x="484" y="156" font-size="12.5" font-weight="600" fill="#0a6b40">live</text>
+    <text x="464" y="196" font-size="18" font-weight="600" fill="#0b0d12">In the room</text>
+    <text x="464" y="224" font-size="13" fill="#4c5563">The instructor joins and opens it.</text>
+    <text x="464" y="244" font-size="13" fill="#4c5563">Attendance, ink and the board belong</text>
+    <text x="464" y="264" font-size="13" fill="#4c5563">to this session.</text>
+    <line x1="464" y1="286" x2="736" y2="286" stroke="#eef0f4"/>
+    <text x="464" y="310" font-size="12" fill="#6e7787">End class is the only way out.</text>
+
+    <!-- Ended -->
+    <rect x="832" y="118" width="320" height="236" rx="18" fill="#ffffff" stroke="#e3e6ec"/>
+    <rect x="856" y="138" width="74" height="26" rx="13" fill="#eaedf2"/>
+    <circle cx="856" cy="151" r="4" fill="#6e7787"/>
+    <text x="868" y="156" font-size="12.5" font-weight="600" fill="#4c5563">ended</text>
+    <text x="856" y="196" font-size="18" font-weight="600" fill="#0b0d12">Over</text>
+    <text x="856" y="224" font-size="13" fill="#4c5563">End class closes it for everyone,</text>
+    <text x="856" y="244" font-size="13" fill="#4c5563">or the window passes unused.</text>
+    <text x="856" y="264" font-size="13" fill="#4c5563">The session stays as history.</text>
+    <line x1="856" y1="286" x2="1124" y2="286" stroke="#eef0f4"/>
+    <text x="856" y="310" font-size="12" fill="#6e7787">Polls and the pen end with it.</text>
+
+    <!-- Arrows -->
+    <line x1="368" y1="236" x2="440" y2="236" stroke="#6e7787" stroke-width="1.5" marker-end="url(#sessionArrow)"/>
+    <text x="404" y="222" font-size="10.5" fill="#6e7787" text-anchor="middle">joins</text>
+
+    <line x1="760" y1="236" x2="832" y2="236" stroke="#6e7787" stroke-width="1.5" marker-end="url(#sessionArrow)"/>
+    <text x="796" y="222" font-size="10.5" fill="#6e7787" text-anchor="middle">End class</text>
+
+    <rect x="48" y="392" width="1104" height="46" rx="12" fill="#e8edfd" stroke="#c9d5fb"/>
+    <text x="72" y="420" font-size="13" fill="#173ab4">A network drop, a closed laptop or a rejoin lands in the same room, the same board and the same attendance row.</text>
+  </g>
+</svg>
